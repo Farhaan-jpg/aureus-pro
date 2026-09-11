@@ -78,8 +78,8 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
       <div className="bg-[#090b10] border border-white/5 rounded p-2">
         <Freshness label="TradingView WS ticks (XAU/DXY/SILVER)" live={Boolean(dh.tvWs)} />
         <Freshness label="Yahoo Finance fallback quotes" live={Boolean(dh.goldSource && dh.goldSource !== 'unavailable')} />
-        <Freshness label="FRED real yields (DGS10 − T10YIE)" live={marketData?.realYield10Y != null} />
-        <Freshness label="GDELT geopolitics" live={Boolean(geo?.live)} detail={ageLabel(geo?.lastUpdated)} />
+        <Freshness label="FRED real yields (DGS10 − T10YIE)" live={marketData?.realYield10Y != null} detail={marketData?.realYield10Y != null ? `${marketData.realYield10Y}%` : 'unavailable'} />
+        <Freshness label={geo?.source === 'rss-fallback' ? 'GEO RISK (RSS fallback)' : 'GDELT geopolitics'} live={Boolean(geo?.live)} detail={`${geo?.source || 'none'}${geo?.lastUpdated ? ' · ' + ageLabel(geo?.lastUpdated) : ''}`} />
         <Freshness label="Gold ETF flows (GLD/IAU/GLDM/SGOL)" live={Boolean(etf?.live)} detail={ageLabel(etf?.lastUpdated)} />
         <Freshness label="Multi-TF matrix (GC=F)" live={Boolean(timeframes?.live)} detail={ageLabel(timeframes?.lastUpdated)} />
         <Freshness label="News RSS (5 sources)" live={news?.length > 0} detail={newsFresh} />

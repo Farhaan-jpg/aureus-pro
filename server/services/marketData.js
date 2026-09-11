@@ -441,9 +441,10 @@ export async function getMarketData() {
   const silverPrice = results.SILVER.price;
   const gsr = (goldPrice && silverPrice) ? Number((goldPrice / silverPrice).toFixed(2)) : null;
 
-  const nominal10Y = results.US10Y.price;
-  const breakeven10Y = fred.breakeven10Y;
-  const fredReal = fred.realYield10Y;
+  // DGS10 (10Y nominal): live Yahoo ^TNX preferred, FRED DGS10 as fallback
+  const nominal10Y = results.US10Y.price ?? fred.nominal10Y;
+  const breakeven10Y = fred.breakeven10Y;   // T10YIE
+  const fredReal = fred.realYield10Y;        // DGS10 - T10YIE (or DFII10)
   const liveRealYield = (nominal10Y != null && breakeven10Y != null)
     ? Number((nominal10Y - breakeven10Y).toFixed(2))
     : fredReal;
