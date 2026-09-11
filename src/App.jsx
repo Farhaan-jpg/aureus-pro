@@ -161,14 +161,14 @@ export default function App() {
       eventSource.onerror = () => {
         setIsLive(false);
         eventSource.close();
-        // Reconnect with 3s backoff
-        reconnectTimeout = setTimeout(connectSSE, 3000);
+        // Zero-delay fast reconnect (800ms)
+        reconnectTimeout = setTimeout(connectSSE, 800);
       };
     }
 
     connectSSE();
 
-    // Fast 2s fallback polling in case SSE is temporarily reconnecting
+    // Fast 1.5s fallback polling in case SSE is reconnecting
     const pollInterval = setInterval(() => {
       if (!isLive) {
         fetch('/api/market-data')
@@ -178,7 +178,7 @@ export default function App() {
           })
           .catch(() => {});
       }
-    }, 2000);
+    }, 1500);
 
     // Instant sync when trader switches back to this tab
     const handleVisibilityChange = () => {
@@ -222,6 +222,43 @@ export default function App() {
     const timer = setInterval(checkImminentEvents, 20000); // Check every 20s
     return () => clearInterval(timer);
   }, [calendar]);
+
+  // Live Browser Tab Title Ticker (Bloomberg / TradingView style)
+  useEffect(() => {
+    const gold = marketData?.goldSpot;
+    if (gold?.price) {
+      const priceStr = `$${Number(gold.price).toFixed(2)}`;
+      const pct = gold.changePercent || 0;
+      const sign = pct >= 0 ? '+' : '';
+      const pctStr = `(${sign}${Number(pct).toFixed(2)}%)`;
+      document.title = `${priceStr} ${pctStr} | XAU/USD Aureus Pro`;
+    }
+  }, [marketData?.goldSpot?.price, marketData?.goldSpot?.changePercent]);
+
+  // AudioContext & Speech Synthesis Unblock on First User Interaction
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          ctx.resume();
+        }
+        if (window.speechSynthesis && window.speechSynthesis.resume) {
+          window.speechSynthesis.resume();
+        }
+      } catch (e) {}
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
 
   // Manual Trigger: Sync all market data
   const handleManualRefresh = async () => {
@@ -302,7 +339,7 @@ export default function App() {
           <div>
             <OrderBookSentiment
               retailData={retail}
-              currentGoldPrice={marketData?.goldSpot?.price || 4335}
+              currentGoldPrice={marketData?.goldSpot?.price || 4385}
             />
           </div>
 

@@ -68,7 +68,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning)
 
   // 5. Technical Structure Sub-Score (15% Weight)
   // Multi-timeframe trend alignment (above/below 50 & 200 EMA)
-  const goldPrice = assets.GOLD ? assets.GOLD.price : 4335;
+  const goldPrice = assets.GOLD ? assets.GOLD.price : 4385;
   const ema50 = goldPrice * 0.994;  // Proxy 50 EMA
   const ema200 = goldPrice * 0.985; // Proxy 200 EMA
   let techScore = 0;

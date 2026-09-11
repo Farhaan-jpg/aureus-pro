@@ -79,7 +79,8 @@ router.get('/orderbook-sentiment', async (req, res) => {
     const retail = getRetailSentiment(market.goldSpot.price);
     res.json(retail);
   } catch (err) {
-    res.json(getRetailSentiment(4335));
+    const cached = getCachedMarketData();
+    res.json(getRetailSentiment(cached?.goldSpot?.price || 4385));
   }
 });
 

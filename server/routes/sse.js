@@ -31,7 +31,7 @@ export function sseHandler(req, res) {
     try {
       const currentNews = getCachedNews();
       const classifiedNews = classifyAllNews(currentNews);
-      const retail = getRetailSentiment(cached.goldSpot?.price || 4335);
+      const retail = getRetailSentiment(cached.goldSpot?.price || 4385);
       const bias = calculateCompositeBias(cached, classifiedNews, retail);
 
       res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({
