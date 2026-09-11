@@ -12,6 +12,10 @@ import { getEconomicCalendar } from '../services/economicCalendar.js';
 import { refreshAndBroadcast } from '../services/cronWorker.js';
 import { getTelegramConfig, updateTelegramConfig, sendTestTelegramAlert } from '../services/telegramBot.js';
 import { getCotData, fetchCotReport } from '../services/cotData.js';
+import { refreshGoldEtfFlows, getGoldEtfFlows } from '../services/goldEtfFlows.js';
+import { refreshGeoRisk, getGeoRisk } from '../services/geoRisk.js';
+import { refreshFredMacro, getFredMacro } from '../services/fredMacro.js';
+import { refreshTimeframeMatrix, getTimeframeMatrix } from '../services/timeframeMatrix.js';
 import { config } from '../config.js';
 
 const router = Router();
@@ -19,7 +23,6 @@ const router = Router();
 const __api_dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE_PATH = path.join(__api_dirname, '../data/terminal_settings.json');
 
-// Initialize runtime keys from terminal_settings.json if present
 try {
   if (fs.existsSync(SETTINGS_FILE_PATH)) {
     const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE_PATH, 'utf-8'));
@@ -28,7 +31,14 @@ try {
   }
 } catch (e) {}
 
-// GET /api/market-data
+function buildBias(marketData, classifiedNews, retail) {
+  return calculateCompositeBias(marketData, classifiedNews, retail, {
+    cot: getCotData(),
+    etf: getGoldEtfFlows(),
+    geo: getGeoRisk()
+  });
+}
+
 router.get('/market-data', async (req, res) => {
   try {
     const data = await getMarketData();
@@ -38,7 +48,6 @@ router.get('/market-data', async (req, res) => {
   }
 });
 
-// GET /api/news
 router.get('/news', async (req, res) => {
   try {
     const rawNews = await aggregateAllNews();
@@ -49,21 +58,17 @@ router.get('/news', async (req, res) => {
   }
 });
 
-// GET /api/composite-bias
 router.get('/composite-bias', async (req, res) => {
   try {
     const marketData = await getMarketData();
-    const rawNews = await aggregateAllNews();
-    const classifiedNews = classifyAllNews(rawNews);
+    const classifiedNews = classifyAllNews(getCachedNews());
     const retail = getRetailSentiment(marketData.goldSpot.price);
-    const bias = calculateCompositeBias(marketData, classifiedNews, retail);
-    res.json(bias);
+    res.json(buildBias(marketData, classifiedNews, retail));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/economic-calendar
 router.get('/economic-calendar', async (req, res) => {
   try {
     const calendar = await getEconomicCalendar();
@@ -73,28 +78,24 @@ router.get('/economic-calendar', async (req, res) => {
   }
 });
 
-// GET /api/orderbook-sentiment
 router.get('/orderbook-sentiment', async (req, res) => {
   try {
     const market = await getMarketData();
-    const retail = getRetailSentiment(market.goldSpot.price);
-    res.json(retail);
+    res.json(getRetailSentiment(market.goldSpot.price));
   } catch (err) {
     const cached = getCachedMarketData();
-    res.json(getRetailSentiment(cached?.goldSpot?.price || 4385));
+    res.json(getRetailSentiment(cached?.goldSpot?.price || null));
   }
 });
 
-// GET /api/strategist
 router.get('/strategist', async (req, res) => {
   try {
     let cached = getCachedFloorAnalysis();
     if (!cached) {
       const marketData = await getMarketData();
-      const rawNews = await aggregateAllNews();
-      const classifiedNews = classifyAllNews(rawNews);
+      const classifiedNews = classifyAllNews(getCachedNews());
       const retail = getRetailSentiment(marketData.goldSpot.price);
-      const bias = calculateCompositeBias(marketData, classifiedNews, retail);
+      const bias = buildBias(marketData, classifiedNews, retail);
       cached = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
     }
     res.json(cached);
@@ -103,14 +104,12 @@ router.get('/strategist', async (req, res) => {
   }
 });
 
-// POST /api/strategist/generate - Force fresh LLM floor analysis
 router.post('/strategist/generate', async (req, res) => {
   try {
     const marketData = await getMarketData();
-    const rawNews = await aggregateAllNews();
-    const classifiedNews = classifyAllNews(rawNews);
+    const classifiedNews = classifyAllNews(await aggregateAllNews());
     const retail = getRetailSentiment(marketData.goldSpot.price);
-    const bias = calculateCompositeBias(marketData, classifiedNews, retail);
+    const bias = buildBias(marketData, classifiedNews, retail);
     const analysis = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
     res.json(analysis);
   } catch (err) {
@@ -118,7 +117,6 @@ router.post('/strategist/generate', async (req, res) => {
   }
 });
 
-// POST /api/refresh - Trigger manual full sync
 router.post('/refresh', async (req, res) => {
   try {
     const result = await refreshAndBroadcast();
@@ -128,7 +126,6 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-// GET /api/cot-data - CFTC Gold Commitment of Traders report
 router.get('/cot-data', async (req, res) => {
   try {
     const cot = await fetchCotReport();
@@ -138,7 +135,42 @@ router.get('/cot-data', async (req, res) => {
   }
 });
 
-// GET /api/settings
+router.get('/etf-flows', async (req, res) => {
+  try {
+    const data = await refreshGoldEtfFlows();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message, fallback: getGoldEtfFlows() });
+  }
+});
+
+router.get('/geo-risk', async (req, res) => {
+  try {
+    const data = await refreshGeoRisk();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message, fallback: getGeoRisk() });
+  }
+});
+
+router.get('/fred-macro', async (req, res) => {
+  try {
+    const data = await refreshFredMacro();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message, fallback: getFredMacro() });
+  }
+});
+
+router.get('/timeframes', async (req, res) => {
+  try {
+    const data = await refreshTimeframeMatrix();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message, fallback: getTimeframeMatrix() });
+  }
+});
+
 router.get('/settings', (req, res) => {
   try {
     const telegram = getTelegramConfig();
@@ -156,7 +188,6 @@ router.get('/settings', (req, res) => {
   }
 });
 
-// POST /api/settings
 router.post('/settings', (req, res) => {
   try {
     const { geminiApiKey, openRouterApiKey, telegram } = req.body;
@@ -197,7 +228,6 @@ router.post('/settings', (req, res) => {
   }
 });
 
-// POST /api/settings/telegram/test
 router.post('/settings/telegram/test', async (req, res) => {
   try {
     const { botToken, chatId } = req.body;

@@ -1,62 +1,58 @@
-// Retail Sentiment & Institutional Order Flow Liquidity Proxy
+import { getCotData } from './cotData.js';
 
-export function getRetailSentiment(currentGoldPrice = 4385) {
-  // Retail sentiment parameters (typically 70-80% of retail is stubbornly Long on Gold)
-  const baseLong = 76.4;
-  const jitter = (Math.sin(Date.now() / 600000) * 2.5);
-  const longPercentage = Number((baseLong + jitter).toFixed(1));
-  const shortPercentage = Number((100 - longPercentage).toFixed(1));
+export function getRetailSentiment(currentGoldPrice = null) {
+  const cot = getCotData();
+  const small = cot?.smallTraders;
+  const live = Boolean(cot?.live && small && (small.longs + small.shorts) > 0);
+  const total = live ? (small.longs + small.shorts) : 0;
+  const longPercentage = live ? Number(((small.longs / total) * 100).toFixed(1)) : null;
+  const shortPercentage = live ? Number((100 - longPercentage).toFixed(1)) : null;
 
-  const isExtremeLongTrap = longPercentage >= 75.0;
-  const isExtremeShortTrap = shortPercentage >= 75.0;
+  const isExtremeLongTrap = longPercentage != null && longPercentage >= 75;
+  const isExtremeShortTrap = shortPercentage != null && shortPercentage >= 75;
 
-  let contrarianSignal = "NEUTRAL";
-  let contrarianMessage = "Retail positioning within normal non-extreme bounds.";
+  let contrarianSignal = 'UNAVAILABLE';
+  let contrarianMessage = 'No live retail book is connected. Showing CFTC non-reportable (small trader) split when the weekly gold COT file is loaded — this is not a tick-by-tick retail feed.';
 
-  if (isExtremeLongTrap) {
-    contrarianSignal = "EXTREME_LONG_RETAIL_TRAP";
-    contrarianMessage = `WARNING: Retail crowd is heavily overleveraged at ${longPercentage}% Long. Institutional order flow desks frequently trigger aggressive long liquidations and stop runs to engineer downside liquidity.`;
-  } else if (isExtremeShortTrap) {
-    contrarianSignal = "EXTREME_SHORT_RETAIL_TRAP";
-    contrarianMessage = `WARNING: Retail is heavily trapped Short at ${shortPercentage}%. High probability of an institutional short squeeze liquidation cascade higher.`;
+  if (live) {
+    contrarianSignal = 'NEUTRAL';
+    contrarianMessage = `CFTC small/non-reportable traders are ${longPercentage}% long / ${shortPercentage}% short as of ${cot.reportDate}. This is weekly, not intraday retail.`;
+    if (isExtremeLongTrap) {
+      contrarianSignal = 'EXTREME_LONG_RETAIL_TRAP';
+      contrarianMessage = `Small traders are ${longPercentage}% long on the latest COT. That is a crowded speculative long, not a live order book.`;
+    } else if (isExtremeShortTrap) {
+      contrarianSignal = 'EXTREME_SHORT_RETAIL_TRAP';
+      contrarianMessage = `Small traders are ${shortPercentage}% short on the latest COT. Crowded shorts can fuel squeezes, still weekly data.`;
+    }
   }
 
-  // Dynamic Institutional Order Flow & Liquidity Heatmap Proxy (5M Scalping Handles)
-  // Centered around tight 5-minute micro liquidity bands ($5 increments)
-  const baseHandle = Math.round(currentGoldPrice / 5) * 5;
-  const levels = [
-    baseHandle + 10,
-    baseHandle + 5,
-    baseHandle,
-    baseHandle - 5,
-    baseHandle - 10
-  ];
-
-  const orderFlowHeatmap = levels.map(level => {
-    const isAbove = level > currentGoldPrice;
-    const distance = Math.abs(level - currentGoldPrice);
-    // Institutional liquidity depth proxy (Lots / Volume clusters)
-    const institutionalLots = Math.round(1800 + (Math.sin(level * 17) * 500) + (100 - Math.min(100, distance * 5)) * 15);
-    const type = isAbove ? 'ASK_SUPPLY_WALL' : 'BID_DEMAND_WALL';
-
-    return {
-      price: level,
-      type,
-      label: `$${level.toFixed(2)}`,
-      institutionalLots,
-      significance: level % 10 === 0 ? '5M MAJOR LIQUIDITY POOL' : '5M MICRO SCALP POCKET',
-      intensity: Math.min(100, Math.round((institutionalLots / 2800) * 100))
-    };
-  });
+  const price = Number(currentGoldPrice);
+  const orderFlowHeatmap = Number.isFinite(price)
+    ? [10, 5, 0, -5, -10].map((offset) => {
+        const level = Math.round(price / 5) * 5 + offset;
+        const distance = Math.abs(level - price);
+        return {
+          price: level,
+          type: level > price ? 'ASK_SUPPLY_WALL' : 'BID_DEMAND_WALL',
+          label: `$${level.toFixed(2)}`,
+          distance: Number(distance.toFixed(2)),
+          significance: level % 10 === 0 ? 'PSYCH_HANDLE' : 'MICRO_HANDLE',
+          intensity: Math.max(12, Math.round(100 - distance * 8))
+        };
+      })
+    : [];
 
   return {
+    live,
+    source: live ? 'CFTC non-reportable traders (weekly)' : 'unavailable',
+    reportDate: cot?.reportDate || null,
     longPercentage,
     shortPercentage,
     contrarianSignal,
     contrarianMessage,
     isExtremeLongTrap,
     isExtremeShortTrap,
-    sampleSize: '42,800+ Active Retail Accounts',
+    sampleSize: live ? `${total.toLocaleString()} small-trader contracts` : 'No live retail sample',
     orderFlowHeatmap
   };
 }

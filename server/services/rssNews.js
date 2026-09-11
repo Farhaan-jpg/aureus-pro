@@ -31,6 +31,21 @@ const RSS_FEEDS = [
 
 let cachedNews = [];
 const seenHashes = new Set();
+// Ring buffer that tracks insertion order so we can evict oldest hashes one-by-one
+const seenHashOrder = [];
+
+function rememberHash(hash) {
+  if (seenHashes.has(hash)) return;
+  seenHashes.add(hash);
+  seenHashOrder.push(hash);
+  // Sliding-window eviction: drop the OLDEST hashes (not all) once past the cap,
+  // so old headlines are never re-reported while the queue drains.
+  const MAX_SEEN = 1000;
+  while (seenHashOrder.length > MAX_SEEN) {
+    const oldest = seenHashOrder.shift();
+    seenHashes.delete(oldest);
+  }
+}
 
 function generateHash(title) {
   return crypto.createHash('sha256').update(title.toLowerCase().trim()).digest('hex');
@@ -133,24 +148,15 @@ export async function aggregateAllNews() {
   const feedResults = await Promise.all(newsPromises);
 
   const combined = feedResults.flat();
-  // If external feeds are limited, merge benchmark headlines
-  if (combined.length < 5) {
-    combined.push(...INSTITUTIONAL_BENCHMARK_HEADLINES);
-  }
 
   // Deduplicate using SHA-256 hash
   const deduplicated = [];
   for (const item of combined) {
     const hash = generateHash(item.title);
     if (!seenHashes.has(hash)) {
-      seenHashes.add(hash);
+      rememberHash(hash);
       deduplicated.push({ ...item, id: hash });
     }
-  }
-
-  // Keep seenHashes bounded to 1000 items
-  if (seenHashes.size > 1000) {
-    seenHashes.clear();
   }
 
   // Sort by newest publication date
@@ -172,11 +178,5 @@ export async function aggregateAllNews() {
 }
 
 export function getCachedNews() {
-  if (!cachedNews || cachedNews.length === 0) {
-    cachedNews = INSTITUTIONAL_BENCHMARK_HEADLINES.map(h => ({
-      ...h,
-      id: generateHash(h.title)
-    }));
-  }
-  return cachedNews;
+  return cachedNews || [];
 }

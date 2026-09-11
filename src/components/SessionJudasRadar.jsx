@@ -75,14 +75,20 @@ export default function SessionJudasRadar({ currentPrice = 4390, marketData = nu
     return { nextSession: sessions[0], minsToNext: (24 * 60 - currentMinuteOfDay) + sessions[0].startMin };
   }, [sessions, currentMinuteOfDay]);
 
-  // Derived Asian Session Range High and Low
-  const dayLow = marketData?.goldSpot?.low || (currentPrice - 25);
-  const dayHigh = marketData?.goldSpot?.high || (currentPrice + 10);
-  const asianHigh = parseFloat((dayHigh - 4.5).toFixed(2));
-  const asianLow = parseFloat((dayLow + 6.0).toFixed(2));
+  const asianHigh = marketData?.asianRange?.high;
+  const asianLow = marketData?.asianRange?.low;
+  const hasRange = asianHigh != null && asianLow != null && asianHigh > asianLow;
 
   // Judas Swing Analysis
   const judasAnalysis = useMemo(() => {
+    if (!hasRange || currentPrice == null) {
+      return {
+        status: 'NO_RANGE',
+        label: 'ASIAN RANGE NOT TRACKED YET',
+        color: 'text-slate-400 bg-slate-900/40 border-slate-700/40',
+        detail: 'High/low is captured from live gold ticks between 00:00–07:00 UTC. Until those ticks exist, this is not inferred from the daily high/low.'
+      };
+    }
     const isAboveAsianHigh = currentPrice > asianHigh;
     const isBelowAsianLow = currentPrice < asianLow;
 
@@ -108,7 +114,7 @@ export default function SessionJudasRadar({ currentPrice = 4390, marketData = nu
         detail: `Price ($${currentPrice.toFixed(2)}) is consolidating between Asian High ($${asianHigh.toFixed(2)}) and Low ($${asianLow.toFixed(2)}).`
       };
     }
-  }, [currentPrice, asianHigh, asianLow]);
+  }, [currentPrice, asianHigh, asianLow, hasRange]);
 
   return (
     <div className="hud-panel p-3.5 bg-[#0a0d14] border border-white/10 rounded-lg flex flex-col justify-between">
@@ -135,11 +141,11 @@ export default function SessionJudasRadar({ currentPrice = 4390, marketData = nu
       <div className="grid grid-cols-2 gap-2 mb-3 font-mono text-xs">
         <div className="p-2 rounded bg-[#0e121d] border border-white/5 flex items-center justify-between">
           <span className="text-slate-400 text-[11px]">ASIAN HIGH (BSL):</span>
-          <span className="font-bold text-amber-400">${asianHigh.toFixed(2)}</span>
+          <span className="font-bold text-amber-400">{asianHigh != null ? `$${asianHigh.toFixed(2)}` : '—'}</span>
         </div>
         <div className="p-2 rounded bg-[#0e121d] border border-white/5 flex items-center justify-between">
           <span className="text-slate-400 text-[11px]">ASIAN LOW (SSL):</span>
-          <span className="font-bold text-cyan-400">${asianLow.toFixed(2)}</span>
+          <span className="font-bold text-cyan-400">{asianLow != null ? `$${asianLow.toFixed(2)}` : '—'}</span>
         </div>
       </div>
 

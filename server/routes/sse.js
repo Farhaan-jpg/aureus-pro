@@ -1,15 +1,16 @@
-// Server-Sent Events (SSE) Bus
-// Broadcasts low-latency market ticks, sentiment shifts, and AI updates to connected institutional clients.
 import { getCachedMarketData } from '../services/marketData.js';
 import { getCachedNews } from '../services/rssNews.js';
 import { classifyAllNews } from '../services/sentimentEngine.js';
 import { getRetailSentiment } from '../services/retailSentiment.js';
 import { calculateCompositeBias } from '../services/compositeBias.js';
+import { getCotData } from '../services/cotData.js';
+import { getGoldEtfFlows } from '../services/goldEtfFlows.js';
+import { getGeoRisk } from '../services/geoRisk.js';
+import { getTimeframeMatrix } from '../services/timeframeMatrix.js';
 
 const sseClients = new Set();
 
 export function sseHandler(req, res) {
-  // Set required headers for SSE with zero proxy buffering
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -22,29 +23,30 @@ export function sseHandler(req, res) {
     res.flushHeaders();
   }
 
-  // Send initial connection packet with event name
   res.write(`event: CONNECTED\ndata: ${JSON.stringify({ status: 'CONNECTED', timestamp: Date.now() })}\n\n`);
 
-  // Instantly send current market data to new client with 0 delay
   const cached = getCachedMarketData();
   if (cached) {
     try {
-      const currentNews = getCachedNews();
-      const classifiedNews = classifyAllNews(currentNews);
-      const retail = getRetailSentiment(cached.goldSpot?.price || 4385);
-      const bias = calculateCompositeBias(cached, classifiedNews, retail);
+      const classifiedNews = classifyAllNews(getCachedNews());
+      const retail = getRetailSentiment(cached.goldSpot?.price || null);
+      const bias = calculateCompositeBias(cached, classifiedNews, retail, {
+        cot: getCotData(),
+        etf: getGoldEtfFlows(),
+        geo: getGeoRisk()
+      });
 
       res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({
         marketData: cached,
         bias,
-        retail
+        retail,
+        timeframes: getTimeframeMatrix()
       })}\n\n`);
     } catch (err) {}
   }
 
   sseClients.add(res);
 
-  // Heartbeat ping every 25 seconds to keep SSE connection alive through reverse proxies/Render
   const heartbeatTimer = setInterval(() => {
     try {
       res.write(`: heartbeat\n\n`);

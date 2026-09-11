@@ -298,11 +298,31 @@ if barstate.islast and showDashboard
 alertcondition(inApexZone, title = "Price Inside Major Apex Zone", message = "Price has entered a high-volume Major Apex Liquidity Zone on {{ticker}}.")
 alertcondition(inPullbackZone, title = "Price Inside HQ Pullback Zone", message = "Price has reached an institutional HQ Pullback Zone on {{ticker}}.")`;
 
-export default function TradingViewChart() {
+export default function TradingViewChart({ marketData }) {
   const containerRef = useRef(null);
   const [interval, setInterval] = useState('5'); // Default to 5-Minute for Daytrading & Scalping
   const [showPineModal, setShowPineModal] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const gold = marketData?.goldSpot;
+  const currentPrice = gold?.price;
+  const asianLow = marketData?.asianRange?.low;
+  const asianHigh = marketData?.asianRange?.high;
+
+  // Dynamic liquidity levels around the live price (nearest 10$ handles + Asian range)
+  const nearestHandle = currentPrice ? Math.round(currentPrice / 10) * 10 : null;
+  const apexPocLow = nearestHandle != null ? nearestHandle - 5 : asianLow;
+  const apexPocHigh = nearestHandle != null ? nearestHandle + 5 : asianHigh;
+  const pullbackLow = currentPrice != null ? currentPrice - 3.5 : null;
+  const pullbackHigh = currentPrice != null ? currentPrice + 3.5 : null;
+  const inPullback = currentPrice != null && pullbackLow != null
+    ? currentPrice >= pullbackLow && currentPrice <= pullbackHigh
+    : false;
+  const inApex = apexPocLow != null && apexPocHigh != null
+    ? currentPrice >= apexPocLow && currentPrice <= apexPocHigh
+    : false;
+
+  const fmtP = (v) => (v == null ? '—' : `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -429,21 +449,21 @@ export default function TradingViewChart() {
         </div>
       </div>
 
-      {/* Dynamic Liquidity HeatMap Market State HUD (Built-in live status) */}
+      {/* Dynamic Liquidity HeatMap Market State HUD (Computed live from market data) */}
       <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded bg-[#090b10] border border-white/5 text-[11px] font-mono">
         <div className="flex items-center gap-3">
           <span className="text-slate-400">HEATMAP STATE:</span>
-          <span className="flex items-center gap-1 text-emerald-400 font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            TREND: BULLISH (Up)
+          <span className={`flex items-center gap-1 font-bold ${inApex ? 'text-gold-400' : 'text-emerald-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${inApex ? 'bg-gold-400' : 'bg-emerald-400'}`}></span>
+            {currentPrice == null ? 'WAITING FOR TAPE' : inApex ? 'INSIDE APEX POC ZONE' : 'TREND ACTIVE'}
           </span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-slate-400 hidden sm:inline">
-            APEX POC ZONE: <strong className="text-gold-400">$4,385.00 - $4,395.00</strong>
+            APEX POC ZONE: <strong className="text-gold-400">{fmtP(apexPocLow)} - {fmtP(apexPocHigh)}</strong>
           </span>
           <span className="text-slate-400">
-            HQ PULLBACK: <strong className="text-cyan-400">ACTIVE ($4,380.00)</strong>
+            HQ PULLBACK: <strong className="text-cyan-400">{inPullback ? 'ACTIVE' : 'STANDBY'} {currentPrice != null ? `(${fmtP(currentPrice)})` : ''}</strong>
           </span>
         </div>
       </div>

@@ -10,7 +10,11 @@ export default function CompositeBiasMeter({ bias }) {
     commodity: 0,
     news: 0,
     retail: 0,
-    technical: 0
+    volatility: 0,
+    ictSweeps: 0,
+    cot: 0,
+    etf: 0,
+    geo: 0
   };
 
   // Convert -100..+100 to angle in degrees (-90deg to +90deg for semi-circle)
@@ -28,21 +32,25 @@ export default function CompositeBiasMeter({ bias }) {
   const currentTheme = colorConfig[label] || colorConfig.NEUTRAL;
 
   const factors = [
-    { name: 'Macro Drivers (Yields & DXY)', weight: '30%', value: breakdown.macro },
-    { name: 'Commodity Cohort (Silver & Oil)', weight: '20%', value: breakdown.commodity },
-    { name: 'News Sentiment (2h Weighted)', weight: '20%', value: breakdown.news },
-    { name: 'Retail Contrarian Divergence', weight: '15%', value: breakdown.retail },
-    { name: 'Technical Structure (EMAs)', weight: '15%', value: breakdown.technical },
+    { name: 'Macro (DXY / real yield)', weight: '18%', value: breakdown.macro ?? 0 },
+    { name: 'Metals & GSR', weight: '12%', value: breakdown.commodity ?? 0 },
+    { name: 'VIX / risk-off', weight: '12%', value: breakdown.volatility ?? 0 },
+    { name: 'News', weight: '12%', value: breakdown.news ?? 0 },
+    { name: 'Asian range / ICT', weight: '10%', value: breakdown.ictSweeps ?? 0 },
+    { name: 'CFTC COT', weight: '10%', value: breakdown.cot ?? 0 },
+    { name: 'Gold ETF tape', weight: '10%', value: breakdown.etf ?? 0 },
+    { name: 'Retail / small traders', weight: '8%', value: breakdown.retail ?? 0 },
+    { name: 'Geopolitics (GDELT)', weight: '8%', value: breakdown.geo ?? 0 },
   ];
 
   return (
-    <div className="hud-panel p-4 flex flex-col justify-between">
+    <div className="hud-panel p-4 flex flex-col justify-between h-full">
       {/* Module Title */}
       <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5">
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4 text-gold-400" />
           <h2 className="font-mono font-bold text-xs tracking-wider text-slate-200 uppercase">
-            Module H: Composite Market Bias & Strength Meter
+            Module H: Composite Market Bias
           </h2>
         </div>
         <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800/40">
@@ -132,11 +140,12 @@ export default function CompositeBiasMeter({ bias }) {
         </div>
       </div>
 
-      {/* 5-Factor Institutional Weighted Algorithm Breakdown */}
-      <div className="mt-3 pt-2 border-t border-white/5 space-y-1.5">
+      {/* 7-Pillar Institutional Weighted Algorithm Breakdown */}
+      <div className="mt-3 pt-2 border-t border-white/5">
         <span className="text-[10px] font-mono text-slate-400 font-semibold tracking-wider uppercase block mb-1">
-          5-Factor Algorithm Breakdown
+          7-Pillar Institutional Breakdown
         </span>
+        <div className="max-h-[175px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
         {factors.map((f, i) => {
           const val = f.value;
           const isPositive = val >= 0;
@@ -166,6 +175,7 @@ export default function CompositeBiasMeter({ bias }) {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

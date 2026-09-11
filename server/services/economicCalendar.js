@@ -425,11 +425,6 @@ async function fetchForexFactoryFeed() {
       const impact = impactRaw.includes('HIGH') ? 'HIGH' : impactRaw.includes('MED') ? 'MEDIUM' : impactRaw.includes('HOLIDAY') ? 'HOLIDAY' : 'LOW';
       const isGoldDriver = country === 'USD' || impact === 'HIGH' || impact === 'CRITICAL';
 
-      // Check if we have verified actuals from our benchmark
-      const matchedBenchmark = BENCHMARK_EVENTS.find(b =>
-        b.country === country && b.title.toLowerCase().trim() === (item.title || '').toLowerCase().trim()
-      );
-
       return {
         id: `ff_${item.date ? new Date(item.date).getTime() : index}_${country}_${index}`,
         title: item.title || 'Economic Event',
@@ -437,24 +432,13 @@ async function fetchForexFactoryFeed() {
         currency: country,
         impact,
         date: item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
-        actual: matchedBenchmark?.actual || '',
-        forecast: item.forecast || matchedBenchmark?.forecast || '',
-        previous: item.previous || matchedBenchmark?.previous || '',
+        actual: item.actual || '',
+        forecast: item.forecast || '',
+        previous: item.previous || '',
         isGoldDriver,
         goldImpactRule: generateGoldImpactRule(item.title || '', country, impact)
       };
     });
-
-    // Merge benchmark events to ensure critical next-week events (FOMC etc.) remain visible
-    const existingTitles = new Set(mappedEvents.map(e => `${e.country}_${e.title.toLowerCase()}`));
-    for (const b of BENCHMARK_EVENTS) {
-      if (!existingTitles.has(`${b.country}_${b.title.toLowerCase()}`)) {
-        mappedEvents.push({
-          ...b,
-          goldImpactRule: generateGoldImpactRule(b.title, b.country, b.impact)
-        });
-      }
-    }
 
     // Sort chronologically
     mappedEvents.sort((a, b) => new Date(a.date) - new Date(b.date));

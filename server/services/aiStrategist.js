@@ -30,10 +30,29 @@ export function generateDeterministicAnalysis(marketData, newsItems, biasScore) 
   const realYield = marketData?.realYield10Y || 2.15;
   const session = marketData?.session || 'NY_OVERLAP';
 
-  const roundBase = Math.floor(goldPrice / 10) * 10;
-  const keySupport = `$${(goldPrice - 3.5).toFixed(2)}`;
-  const keyResistance = `$${(goldPrice + 4.5).toFixed(2)}`;
-  const invalidation = biasScore >= 0 ? `$${(goldPrice - 2.2).toFixed(2)}` : `$${(goldPrice + 2.2).toFixed(2)}`;
+  // Real structural S/R levels: Asian session range (liquidity pool), session extremes, round handles
+  const asianHigh = marketData?.asianRange?.high;
+  const asianLow = marketData?.asianRange?.low;
+  const dayHigh = marketData?.goldSpot?.high;
+  const dayLow = marketData?.goldSpot?.low;
+  const nearestHandle = Math.round(goldPrice / 10) * 10;
+
+  const roundSupport = nearestHandle - 10;
+  const roundResistance = nearestHandle;
+  // Prefer Asian range bounds when valid, otherwise fall back to round handles
+  const keySupport = Math.min(
+    asianLow ?? roundSupport,
+    dayLow ?? roundSupport
+  );
+  const keyResistance = Math.max(
+    asianHigh ?? nearestHandle,
+    dayHigh ?? nearestHandle
+  );
+  const keySupportStr = `$${keySupport.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const keyResistanceStr = `$${keyResistance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const invalidation = biasScore >= 0
+    ? `$${(Math.max(keySupport - 3, keySupport * 0.999)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `$${(Math.min(keyResistance + 3, keyResistance * 1.001)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   let bias = "NEUTRAL_CHOP";
   if (biasScore >= 30) {
@@ -56,16 +75,20 @@ export function generateDeterministicAnalysis(marketData, newsItems, biasScore) 
     macroSynthesis += "Mixed macro signals: DXY and yields consolidating. Market flow is strictly oscillating between structural supply/demand order blocks.";
   }
 
+  const zoneNarrative = (asianHigh && asianLow)
+    ? `Asian range liquidity sits between $${asianLow.toFixed(2)} and $${asianHigh.toFixed(2)}.`
+    : `Watch the ${nearestHandle >= 0 ? '$' + nearestHandle.toLocaleString() : ''} round-handle liquidity pool for sweep-and-reverse behavior.`;
+
   return {
     actionableBias: bias,
     confidence: Math.min(88, Math.max(60, 65 + Math.abs(biasScore) / 4)),
-    keySupport,
-    keyResistance,
+    keySupport: keySupportStr,
+    keyResistance: keyResistanceStr,
     invalidationLevel: invalidation,
-    warningTrapZone: `High-spread chop trap zone between $${(goldPrice - 0.8).toFixed(2)} and $${(goldPrice + 0.8).toFixed(2)}. Wider broker spreads in this pocket erode intraday capital.`,
+    warningTrapZone: `High-spread chop trap zone between $${((goldPrice + keySupport) / 2).toFixed(2)} and $${((goldPrice + keyResistance) / 2).toFixed(2)}. Wider broker spreads in this pocket erode intraday capital.`,
     sessionJudasContext: `Current Session: ${session}. Watch for 5m Judas swing fakeouts at session opens designed to trap aggressive breakout traders before real institutional volume commits.`,
     macroYieldSynthesis: macroSynthesis,
-    floorCommentary: `The retail crowd is clamoring for quick breakouts, but institutional liquidity desks are simply sweeping stops above equal highs and below equal lows. Protect your capital: let the tape confirm absorption before assuming directional continuity.`,
+    floorCommentary: `The retail crowd is clamoring for quick breakouts, but institutional liquidity desks are simply sweeping stops at ${keySupportStr} and ${keyResistanceStr}. ${zoneNarrative} Protect your capital: let the tape confirm absorption before assuming directional continuity.`,
     provider: "Deterministic Institutional Engine (Tier-3 Fallback)",
     generatedAt: new Date().toISOString()
   };
