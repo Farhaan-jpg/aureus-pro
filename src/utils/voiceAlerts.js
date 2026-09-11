@@ -185,3 +185,11 @@ export function speakHandleSweep(priceHandle) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.handleSweeps) return;
   speakAlert(`Gold spot testing key handle: ${priceHandle} dollars. Watch for five minute liquidity sweep.`);
 }
+
+// 6. Custom Interactive Price Level Alert
+export function speakPriceAlert(targetPrice, condition = 'reached') {
+  if (!currentSettings.enabled) return;
+  const condText = condition === 'above' ? 'broken above' : condition === 'below' ? 'fallen below' : 'reached';
+  speakAlert(`Price target triggered: Gold has ${condText} ${targetPrice} dollars.`);
+}
+

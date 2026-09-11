@@ -1,0 +1,37 @@
+{
+  "reportDate": "2026-09-08",
+  "releaseDate": "2026-09-11",
+  "contract": "COMEX GOLD (100 TROY OZ)",
+  "openInterest": 512480,
+  "openInterestChange": 14220,
+  "managedMoney": {
+    "longs": 268450,
+    "shorts": 48920,
+    "net": 219530,
+    "weeklyNetChange": 11450,
+    "longShortRatio": 5.49,
+    "percentile3Year": 88.4,
+    "stance": "EXTREME_BULLISH_OVEREXTENDED"
+  },
+  "commercials": {
+    "longs": 74120,
+    "shorts": 312890,
+    "net": -238770,
+    "weeklyNetChange": -14100,
+    "stance": "HEAVY_COMMERCIAL_SHORT_HEDGE"
+  },
+  "smallTraders": {
+    "longs": 41200,
+    "shorts": 21960,
+    "net": 19240,
+    "weeklyNetChange": 2650
+  },
+  "signal": {
+    "bias": "OVERBOUGHT_CONTRARIAN_CAUTION",
+    "percentile": 88.4,
+    "headline": "Managed Money Longs At 88.4th Percentile — Crowded Bullish Stance",
+    "description": "Hedge funds have accumulated heavy net long exposure (+11,450 contracts this week). Commercial bullion banks have expanded short hedges to -238k contracts. Historical precedence indicates high vulnerability to sharp profit-taking washouts if US Dollar or Real Yields spike.",
+    "institutionalAction": "Fade extreme late breakouts; await liquidity sweeps into deep discounts before deploying macro longs."
+  },
+  "lastUpdated": "2026-09-11T13:57:02.103Z"
+}

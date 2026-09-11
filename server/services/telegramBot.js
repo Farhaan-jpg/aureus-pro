@@ -135,3 +135,64 @@ export async function sendRedFolderTelegramAlert(event, minutesRemaining, goldPr
 
   return await sendTelegramMessage(message);
 }
+
+// Extreme Retail Sentiment Trap Alert (>80% Long or Short)
+export async function sendRetailTrapTelegramAlert(retailData, goldPrice) {
+  if (!botConfig.enabled) return;
+
+  const isLongTrap = retailData.longPercentage >= 80;
+  const trapType = isLongTrap ? 'EXTREME RETAIL LONG TRAP' : 'EXTREME RETAIL SHORT TRAP';
+  const icon = isLongTrap ? '🪤 🚨' : '🪤 ⚠️';
+  const contrarianAction = isLongTrap ? 'Institutional Liquidity Pools sit BELOW. Expect Long Liquidation Sweep.' : 'Institutional Liquidity Pools sit ABOVE. Expect Short Squeeze Sweep.';
+
+  const message = `
+${icon} <b>CONTRARIAN ALERT: ${trapType}</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 <b>XAU/USD Spot:</b> $${goldPrice.toFixed(2)}
+👥 <b>Retail Positioning:</b> ${retailData.longPercentage.toFixed(1)}% Long / ${retailData.shortPercentage.toFixed(1)}% Short
+⚖️ <b>Ratio:</b> ${retailData.ratio}:1
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 <b>Institutional Floor Stance:</b>
+<i>${contrarianAction}</i>
+`.trim();
+
+  return await sendTelegramMessage(message);
+}
+
+// Institutional Composite Bias Flip Alert
+export async function sendBiasFlipTelegramAlert(newBias, score, goldPrice) {
+  if (!botConfig.enabled || !botConfig.alertTypes.biasFlips) return;
+
+  const icon = score > 0 ? '🟢 📈' : score < 0 ? '🔴 📉' : '⚪ ⚖️';
+
+  const message = `
+${icon} <b>AUREUS PRO: COMPOSITE BIAS FLIP</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧭 <b>New Regime:</b> ${newBias.toUpperCase()} (${score > 0 ? '+' : ''}${score}/100)
+🎯 <b>XAU/USD Spot:</b> $${goldPrice.toFixed(2)}
+🕒 <b>Time:</b> ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+<i>5-Factor Macro, Real Yield, News, Retail & Order Book Model Realigned.</i>
+`.trim();
+
+  return await sendTelegramMessage(message);
+}
+
+// ICT Session Judas Liquidity Sweep Alert
+export async function sendJudasSweepTelegramAlert(sessionName, sweptLevel, sweepType, goldPrice) {
+  if (!botConfig.enabled) return;
+
+  const message = `
+⚡ <b>ICT JUDAS SWING DETECTED (${sessionName})</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 <b>XAU/USD Spot:</b> $${goldPrice.toFixed(2)}
+🎯 <b>Swept Key Reference:</b> $${sweptLevel.toFixed(2)} (${sweepType})
+🕒 <b>Killzone:</b> ${sessionName}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 <b>Institutional Playbook:</b>
+<i>Asian Session liquidity captured. Watch for turtle-soup reversal rejection candles on 5M timeframe.</i>
+`.trim();
+
+  return await sendTelegramMessage(message);
+}
+

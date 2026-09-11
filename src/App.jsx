@@ -7,6 +7,10 @@ import FloorStrategist from './components/FloorStrategist';
 import NewsSentimentFeed from './components/NewsSentimentFeed';
 import OrderBookSentiment from './components/OrderBookSentiment';
 import EconomicCalendar from './components/EconomicCalendar';
+import MultiTimeframeMatrix from './components/MultiTimeframeMatrix';
+import SessionJudasRadar from './components/SessionJudasRadar';
+import CotReportGauge from './components/CotReportGauge';
+import PriceAlertManager from './components/PriceAlertManager';
 import SettingsModal from './components/SettingsModal';
 import { 
   getVoiceSettings, 
@@ -31,6 +35,7 @@ export default function App() {
 
   // Settings & Voice Controls
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPriceAlertsOpen, setIsPriceAlertsOpen] = useState(false);
   const [voiceConfig, setVoiceConfig] = useState(getVoiceSettings());
 
   // Voice Alert Tracking Refs to prevent spam
@@ -301,11 +306,20 @@ export default function App() {
         voiceEnabled={voiceConfig.enabled}
         onToggleVoice={handleToggleVoice}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenPriceAlerts={() => setIsPriceAlertsOpen(true)}
       />
 
       {/* Main Terminal Workspace */}
       <main className="flex-1 max-w-[1920px] w-full mx-auto p-3 sm:p-4 space-y-4">
         
+        {/* Top Institutional Layer: Multi-Timeframe Alignment Matrix (1M - 1D) */}
+        <div>
+          <MultiTimeframeMatrix
+            currentPrice={marketData?.goldSpot?.price || 4390}
+            changePercent={marketData?.goldSpot?.changePercent || 0}
+          />
+        </div>
+
         {/* Row 1: Primary Advanced Chart + Floor Strategist AI Commentary */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Module E: TradingView Live Chart (7 cols) */}
@@ -328,7 +342,7 @@ export default function App() {
           <MacroDriversGrid marketData={marketData} />
         </div>
 
-        {/* Row 3: Composite Bias Gauge + Order Book Depth & Retail Sentiment + Economic Calendar */}
+        {/* Row 3: Institutional Sentiment & Session Execution Grid (3 cols) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Module H: Composite Market Bias & Strength Meter */}
           <div>
@@ -343,13 +357,29 @@ export default function App() {
             />
           </div>
 
-          {/* Module F: Real-Time Economic Calendar & Gold Impact Matrix */}
+          {/* Institutional ICT Session & Judas Swing Radar */}
           <div>
+            <SessionJudasRadar
+              currentPrice={marketData?.goldSpot?.price || 4390}
+              marketData={marketData}
+            />
+          </div>
+        </div>
+
+        {/* Row 4: Macro Positioning & Fundamental Catalysts (2 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* CFTC Gold (COMEX) COT Report Gauge (5 cols) */}
+          <div className="lg:col-span-5">
+            <CotReportGauge />
+          </div>
+
+          {/* Module F: Real-Time Economic Calendar & Gold Impact Matrix (7 cols) */}
+          <div className="lg:col-span-7">
             <EconomicCalendar calendarData={calendar} />
           </div>
         </div>
 
-        {/* Row 4: Module B - High-Speed News Aggregator & AI Sentiment Classifier */}
+        {/* Row 5: Module B - High-Speed News Aggregator & AI Sentiment Classifier */}
         <div>
           <NewsSentimentFeed news={news} />
         </div>
@@ -380,6 +410,14 @@ export default function App() {
         onSettingsUpdated={(newVoice) => {
           if (newVoice) setVoiceConfig({ ...newVoice });
         }}
+      />
+
+      {/* Custom Price Level Audio Alerts Modal */}
+      <PriceAlertManager
+        isOpen={isPriceAlertsOpen}
+        onClose={() => setIsPriceAlertsOpen(false)}
+        currentPrice={marketData?.goldSpot?.price || 4390}
+        voiceEnabled={voiceConfig.enabled}
       />
     </div>
   );

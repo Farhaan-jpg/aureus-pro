@@ -11,6 +11,7 @@ import { getRetailSentiment } from '../services/retailSentiment.js';
 import { getEconomicCalendar } from '../services/economicCalendar.js';
 import { refreshAndBroadcast } from '../services/cronWorker.js';
 import { getTelegramConfig, updateTelegramConfig, sendTestTelegramAlert } from '../services/telegramBot.js';
+import { getCotData, fetchCotReport } from '../services/cotData.js';
 import { config } from '../config.js';
 
 const router = Router();
@@ -124,6 +125,16 @@ router.post('/refresh', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cot-data - CFTC Gold Commitment of Traders report
+router.get('/cot-data', async (req, res) => {
+  try {
+    const cot = await fetchCotReport();
+    res.json(cot);
+  } catch (err) {
+    res.status(500).json({ error: err.message, fallback: getCotData() });
   }
 });
 

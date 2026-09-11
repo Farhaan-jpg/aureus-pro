@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings } from 'lucide-react';
+import { Activity, Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings, Bell } from 'lucide-react';
 
 export default function Header({
   marketData,
@@ -11,7 +11,8 @@ export default function Header({
   isAiGenerating,
   voiceEnabled,
   onToggleVoice,
-  onOpenSettings
+  onOpenSettings,
+  onOpenPriceAlerts
 }) {
   const gold = marketData?.goldSpot || { price: 4380.00, change: 0, changePercent: 0, high: 4385, low: 4320 };
   const isUp = (gold.changePercent !== undefined && gold.changePercent !== 0 ? gold.changePercent : (gold.change || 0)) >= 0;
@@ -166,6 +167,15 @@ export default function Header({
             title="Sync all market feeds"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-gold-400' : ''}`} />
+          </button>
+
+          {/* Custom Price Alerts Bell */}
+          <button
+            onClick={onOpenPriceAlerts}
+            className="p-1.5 rounded border border-white/10 text-slate-300 hover:text-gold-400 bg-slate-900 hover:bg-slate-800 transition active:scale-95"
+            title="Custom Price Level Audio Alerts"
+          >
+            <Bell className="w-4 h-4" />
           </button>
 
           {/* Voice Alert Quick Toggle */}
