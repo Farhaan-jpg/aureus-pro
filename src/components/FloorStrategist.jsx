@@ -89,14 +89,42 @@ export default function FloorStrategist({ commentary, onGenerateAI, isAiGenerati
           </div>
         </div>
 
-        {/* High-Probability Institutional Setup Card */}
-        <div className="bg-[#0f141f] border-l-2 border-l-gold-400 border-white/5 border p-2.5 rounded mb-2.5">
-          <div className="flex items-center gap-1.5 text-gold-400 text-[11px] font-mono font-bold uppercase mb-1">
-            <Crosshair className="w-3.5 h-3.5" />
-            <span>High-Probability Institutional Setup</span>
+        {/* 5-Minute Scalp Execution Card */}
+        <div className="bg-gradient-to-r from-gold-500/10 via-[#0f141f] to-amber-500/10 border border-gold-500/30 p-3 rounded mb-2.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-gold-400 animate-ping" />
+              <span className="text-[11px] font-mono font-extrabold text-gold-300 uppercase tracking-wider">
+                5-MINUTE DAYTRADE & SCALP EXECUTION
+              </span>
+            </div>
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+              data.scalpBias5m === 'LONG_SCALP' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600' :
+              data.scalpBias5m === 'SHORT_SCALP' ? 'bg-rose-950/80 text-rose-300 border-rose-600' :
+              'bg-slate-900 text-slate-400 border-slate-700'
+            }`}>
+              {data.scalpBias5m || '5M SCALP BIAS'}
+            </span>
           </div>
-          <p className="text-xs text-slate-200 font-sans leading-relaxed">
-            {data.highProbabilitySetup}
+
+          <div className="grid grid-cols-3 gap-2 my-2 text-xs font-mono">
+            <div className="bg-black/50 p-1.5 rounded border border-white/5">
+              <span className="text-[9px] text-slate-400 block">5M Target 1</span>
+              <span className="font-bold text-emerald-400 tabular-nums">{data.scalpTarget1 || '+$1.80 (18 pips)'}</span>
+            </div>
+            <div className="bg-black/50 p-1.5 rounded border border-white/5">
+              <span className="text-[9px] text-slate-400 block">5M Runner (T2)</span>
+              <span className="font-bold text-emerald-300 tabular-nums">{data.scalpTarget2 || '+$3.50 (35 pips)'}</span>
+            </div>
+            <div className="bg-black/50 p-1.5 rounded border border-white/5">
+              <span className="text-[9px] text-slate-400 block">Hard Stop Loss</span>
+              <span className="font-bold text-rose-400 tabular-nums">{data.scalpStopLoss || '-$1.50 (-15 pips)'}</span>
+            </div>
+          </div>
+
+          <p className="text-[11px] font-sans text-slate-300 leading-snug">
+            <strong className="text-gold-400 font-mono">Trigger: </strong>
+            {data.scalpTrigger5m || data.highProbabilitySetup}
           </p>
         </div>
 

@@ -57,6 +57,15 @@ export default function EconomicCalendar({ calendarData }) {
         {/* Tab 1: Upcoming Events */}
         {activeTab === 'UPCOMING' && (
           <div className="space-y-2">
+            {/* Scalper Volatility Warning Alert */}
+            <div className="bg-amber-950/30 border border-amber-500/30 p-2 rounded flex items-center justify-between text-[11px] font-mono">
+              <span className="text-amber-400 font-bold flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                5M SCALPER RULE:
+              </span>
+              <span className="text-slate-300">Flatten all 5m scalps 5 mins before High/Critical releases</span>
+            </div>
+
             {events.map((evt) => {
               const countdown = formatCountdown(evt.date);
               const isUrgent = countdown.includes('00h') || countdown.includes('01h') || countdown.includes('02h');

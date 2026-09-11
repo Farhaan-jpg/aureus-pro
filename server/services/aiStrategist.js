@@ -1,69 +1,94 @@
 import { config } from '../config.js';
 
-// The Floor Strategist System Prompt
+// The Floor Strategist System Prompt (5-Minute Daytrading & Scalping Optimized)
 const STRATEGIST_SYSTEM_PROMPT = `
-You are "The Floor Strategist" — a cynical, risk-averse, 10+ year veteran institutional bullion trader on the COMEX/London OTC gold desk.
+You are "The Floor Strategist" — a cynical, risk-averse, 10+ year veteran institutional bullion trader on the COMEX/London OTC gold desk specializing in 5-MINUTE DAYTRADING & INTRADAY SCALPING.
 You do NOT trade on retail hype, meme indicators, or lagging oscillators. You care about:
-1. Liquidity sweeps: Stop hunts above equal highs ($20-$50 round handles) and engineered liquidity runs below equal lows.
-2. Session transitions: Asian range accumulation / compression, London Open fakeouts (Judas swings), and New York overlap liquidity injections.
-3. Macro drivers: US 10-Year Real Yields (the true opportunity cost of zero-yielding bullion), DXY momentum, and Fed dot plot expectations.
-4. Capital preservation: Identifying high-spread traps and front-running retail stop clusters.
+1. 5-Minute Liquidity Sweeps: Stop hunts above equal highs ($5-$10 micro handles) and engineered liquidity runs below equal lows.
+2. 5-Minute Execution Setups: Fair Value Gaps (FVG) mitigation, session Judas fakeouts, and 5m displacement candles.
+3. Strict Scalper Risk Management: 1:2 or 1:3 RR scalps with exact 5m invalidation stop loss, target 1 (15 pips), and target 2 (30 pips).
+4. Capital Preservation: Identifying high-spread traps, slippage zones, and front-running retail stop clusters.
 
 You MUST reply ONLY with a valid JSON object strictly matching this schema:
 {
   "actionableBias": "BULLISH" | "BEARISH" | "NEUTRAL_CHOP" | "CASH_IS_KING",
   "confidence": <integer 50-95>,
+  "scalpBias5m": "LONG_SCALP" | "SHORT_SCALP" | "NO_TRADE_CHOP",
+  "scalpTrigger5m": "<exact 5m entry trigger, e.g. Wait for 5m liquidity sweep below $2,682 and enter on first 5m close back above VWAP>",
+  "scalpTarget1": "<quick scalp target 1, e.g. $2,685.50 (+15 pips)>",
+  "scalpTarget2": "<runner scalp target 2, e.g. $2,688.00 (+30 pips)>",
+  "scalpStopLoss": "<hard 5m stop loss, e.g. $2,680.50 (-15 pips)>",
   "keySupport": "<price string e.g. $2,642.50>",
   "keyResistance": "<price string e.g. $2,695.00>",
   "invalidationLevel": "<exact invalidation price string e.g. $2,638.00>",
-  "highProbabilitySetup": "<2-3 sentence description of the setup, e.g. London Low liquidity grab sweep followed by NY session retest>",
-  "warningTrapZone": "<risk warning specifying high-spread or chop trap areas>",
-  "sessionJudasContext": "<brief note on current Asian/London/NY session behavior and fakeout risks>",
+  "highProbabilitySetup": "<2-3 sentence description of the setup>",
+  "warningTrapZone": "<risk warning specifying high-spread or chop trap areas for scalpers>",
+  "sessionJudasContext": "<brief note on current 5m session Judas swing fakeouts>",
   "macroYieldSynthesis": "<institutional breakdown of DXY & Real Yields impact right now>",
-  "floorCommentary": "<3-4 sentences in your raw, cynical institutional trader voice analyzing the tape>"
+  "floorCommentary": "<3-4 sentences in your raw, cynical institutional scalper voice>"
 }
 `;
 
-// Deterministic Rule-Based Institutional Engine (Tier 3 Fallback)
+// Deterministic Rule-Based Institutional Engine (Tier 3 Fallback - 5M Scalping)
 export function generateDeterministicAnalysis(marketData, newsItems, biasScore) {
   const goldPrice = marketData?.goldSpot?.price || 2685.00;
   const dxy = marketData?.assets?.DXY?.price || 104.3;
   const realYield = marketData?.realYield10Y || 2.15;
   const session = marketData?.session || 'NY_OVERLAP';
 
-  const roundBase = Math.floor(goldPrice / 25) * 25;
-  const keySupport = `$${(roundBase).toFixed(2)}`;
-  const keyResistance = `$${(roundBase + 25).toFixed(2)}`;
-  const invalidation = biasScore >= 0 ? `$${(roundBase - 8.5).toFixed(2)}` : `$${(roundBase + 33.5).toFixed(2)}`;
+  const roundBase = Math.floor(goldPrice / 10) * 10;
+  const keySupport = `$${(goldPrice - 3.5).toFixed(2)}`;
+  const keyResistance = `$${(goldPrice + 4.5).toFixed(2)}`;
+  const invalidation = biasScore >= 0 ? `$${(goldPrice - 2.2).toFixed(2)}` : `$${(goldPrice + 2.2).toFixed(2)}`;
 
   let bias = "NEUTRAL_CHOP";
-  if (biasScore >= 35) bias = "BULLISH";
-  else if (biasScore <= -35) bias = "BEARISH";
-  else if (Math.abs(biasScore) < 15) bias = "CASH_IS_KING";
+  let scalpBias = "NO_TRADE_CHOP";
+  if (biasScore >= 30) {
+    bias = "BULLISH";
+    scalpBias = "LONG_SCALP";
+  } else if (biasScore <= -30) {
+    bias = "BEARISH";
+    scalpBias = "SHORT_SCALP";
+  } else if (Math.abs(biasScore) < 15) {
+    bias = "CASH_IS_KING";
+    scalpBias = "NO_TRADE_CHOP";
+  }
 
   const isDxyElevated = dxy > 104.5;
   const isYieldHigh = realYield > 2.2;
 
   let macroSynthesis = `Real yields floating at ${realYield}% with DXY near ${dxy}. `;
   if (isYieldHigh && isDxyElevated) {
-    macroSynthesis += "Dual macro headwinds capping institutional aggressive bids. Any upside spike represents liquidity hunting rather than real accumulation.";
+    macroSynthesis += "Dual macro headwinds capping aggressive upside bids. On the 5m chart, favor fading overbought spikes into ask walls.";
   } else if (!isYieldHigh && !isDxyElevated) {
-    macroSynthesis += "Macro tailwinds supportive as opportunity cost of non-yielding bullion softens with softening nominal yields and consolidating DXY.";
+    macroSynthesis += "Macro tailwinds supportive. 5m dips into bid demand walls are high-probability long scalps.";
   } else {
-    macroSynthesis += "Mixed macro signals: DXY and Treasury curves diverging. Institutional flow is reacting strictly to structural order blocks.";
+    macroSynthesis += "Mixed macro signals: DXY and yields consolidating. Scalp strictly between the 5m range boundaries.";
   }
+
+  const isLong = scalpBias === 'LONG_SCALP';
+  const scalpTarget1 = isLong ? `$${(goldPrice + 1.80).toFixed(2)} (+18 pips)` : `$${(goldPrice - 1.80).toFixed(2)} (+18 pips)`;
+  const scalpTarget2 = isLong ? `$${(goldPrice + 3.50).toFixed(2)} (+35 pips)` : `$${(goldPrice - 3.50).toFixed(2)} (+35 pips)`;
+  const scalpStopLoss = isLong ? `$${(goldPrice - 1.50).toFixed(2)} (-15 pips)` : `$${(goldPrice + 1.50).toFixed(2)} (-15 pips)`;
 
   return {
     actionableBias: bias,
     confidence: Math.min(88, Math.max(60, 65 + Math.abs(biasScore) / 4)),
+    scalpBias5m: scalpBias,
+    scalpTrigger5m: isLong 
+      ? `Wait for 5m liquidity sweep below $${(goldPrice - 1.5).toFixed(2)}. Enter long when the 5m candle reclaims $${goldPrice.toFixed(2)} with volume.` 
+      : `Wait for 5m liquidity sweep above $${(goldPrice + 1.5).toFixed(2)}. Enter short when the 5m candle rejects and breaks below $${goldPrice.toFixed(2)}.`,
+    scalpTarget1,
+    scalpTarget2,
+    scalpStopLoss,
     keySupport,
     keyResistance,
     invalidationLevel: invalidation,
-    highProbabilitySetup: `Wait for liquidity run into ${bias === 'BULLISH' ? keySupport : keyResistance}. Look for institutional absorption on the 15m footprint chart and enter on the first 5m displacement wick.`,
-    warningTrapZone: `No-man's land between $${(goldPrice - 3).toFixed(2)} and $${(goldPrice + 3).toFixed(2)}. Wide retail spreads and algorithmic chop will bleed impatient scalpers before London/NY session high/low tests.`,
-    sessionJudasContext: `Current Session: ${session}. Watch for the classic Judas swing. Algorithms will probe stops above recent Asian highs before settling into true directional order flow.`,
+    highProbabilitySetup: `5M Scalp Setup: Let the market hunt retail stop orders around $${goldPrice.toFixed(2)}. Enter on the first 5m displacement candle with a strict 15-pip stop loss targeting the opposing order block.`,
+    warningTrapZone: `No-scalp kill zone between $${(goldPrice - 0.8).toFixed(2)} and $${(goldPrice + 0.8).toFixed(2)}. Do not enter in the middle of the 5m range where spread eat into profit margins.`,
+    sessionJudasContext: `Current Session: ${session}. Watch for 5m Judas swing fakeouts at session transition opens before committing size.`,
     macroYieldSynthesis: macroSynthesis,
-    floorCommentary: `The retail crowd is clamoring for a breakout, but real volume is dormant until key macro liquidity pools are taken. Institutional desks are hunting stop orders clustered around psychological levels. Protect your capital: don't buy into the initial breakout impulse without session confirmation.`,
+    floorCommentary: `Scalping gold requires ruthless discipline. If you take 5m setups, take your 15-20 pips at Target 1 and move your stop to break-even immediately. The algorithmic market makers hunt trailing stops all day long. Don't be greedy — take the liquidity and run.`,
     provider: "Deterministic Institutional Engine (Tier-3 Fallback)",
     generatedAt: new Date().toISOString()
   };

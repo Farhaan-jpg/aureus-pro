@@ -3,7 +3,7 @@ import { BarChart3, Maximize2 } from 'lucide-react';
 
 export default function TradingViewChart() {
   const containerRef = useRef(null);
-  const [interval, setInterval] = useState('15');
+  const [interval, setInterval] = useState('5'); // Default to 5-Minute for Daytrading & Scalping
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -30,9 +30,10 @@ export default function TradingViewChart() {
           allow_symbol_change: false,
           container_id: 'tradingview_xauusd_advanced',
           studies: [
+            'VWAP@tv-basicstudies',
             'RSI@tv-basicstudies',
-            'MACD@tv-basicstudies',
-            'Volume@tv-basicstudies'
+            'Volume@tv-basicstudies',
+            'MACD@tv-basicstudies'
           ],
           disabled_features: [
             'header_compare',
@@ -71,39 +72,44 @@ export default function TradingViewChart() {
   }, [interval]);
 
   const intervals = [
-    { label: '15M', value: '15' },
-    { label: '1H', value: '60' },
-    { label: '4H', value: '240' },
-    { label: '1D', value: 'D' },
+    { label: '1M', value: '1', note: 'Tick Scalp' },
+    { label: '5M', value: '5', note: 'Daytrade Prime', isPrimary: true },
+    { label: '15M', value: '15', note: 'Structure' },
+    { label: '1H', value: '60', note: 'Trend' },
+    { label: '4H', value: '240', note: 'Macro' },
+    { label: '1D', value: 'D', note: 'Daily' },
   ];
 
   return (
     <div className="hud-panel p-3.5 flex flex-col h-[540px]">
       {/* Chart Header Bar */}
-      <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-white/5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 mb-2 border-b border-white/5 gap-2">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-gold-400" />
           <span className="font-mono font-bold text-xs tracking-wider text-slate-200">
             LIVE OANDA:XAUUSD ADVANCED CHART
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 font-mono">
-            RSI / MACD / Volume Active
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/10 text-gold-400 font-mono font-bold border border-gold-500/20 animate-pulse">
+            5M SCALPING MODE ACTIVE
           </span>
         </div>
 
         {/* Timeframe Controls */}
-        <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded border border-white/10">
+        <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded border border-white/10 overflow-x-auto">
           {intervals.map((tf) => (
             <button
               key={tf.value}
               onClick={() => setInterval(tf.value)}
-              className={`px-2 py-0.5 text-xs font-mono font-semibold rounded transition ${
+              className={`px-2 py-0.5 text-xs font-mono font-semibold rounded transition flex items-center gap-1 ${
                 interval === tf.value
-                  ? 'bg-gold-500 text-black shadow-sm'
+                  ? 'bg-gold-500 text-black shadow-sm font-bold'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              {tf.label}
+              <span>{tf.label}</span>
+              {tf.isPrimary && (
+                <span className="w-1.5 h-1.5 rounded-full bg-black/70 animate-ping"></span>
+              )}
             </button>
           ))}
         </div>

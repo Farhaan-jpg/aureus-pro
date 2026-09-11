@@ -21,31 +21,31 @@ export function getRetailSentiment(currentGoldPrice = 2685) {
     contrarianMessage = `WARNING: Retail is heavily trapped Short at ${shortPercentage}%. High probability of an institutional short squeeze liquidation cascade higher.`;
   }
 
-  // Dynamic Institutional Order Flow & Liquidity Heatmap Proxy
-  // Centered around round psychological handles ($2,600, $2,625, $2,650, $2,675, $2,700, etc.)
-  const baseHandle = Math.round(currentGoldPrice / 25) * 25;
+  // Dynamic Institutional Order Flow & Liquidity Heatmap Proxy (5M Scalping Handles)
+  // Centered around tight 5-minute micro liquidity bands ($5 increments)
+  const baseHandle = Math.round(currentGoldPrice / 5) * 5;
   const levels = [
-    baseHandle + 50,
-    baseHandle + 25,
+    baseHandle + 10,
+    baseHandle + 5,
     baseHandle,
-    baseHandle - 25,
-    baseHandle - 50
+    baseHandle - 5,
+    baseHandle - 10
   ];
 
   const orderFlowHeatmap = levels.map(level => {
     const isAbove = level > currentGoldPrice;
     const distance = Math.abs(level - currentGoldPrice);
     // Institutional liquidity depth proxy (Lots / Volume clusters)
-    const institutionalLots = Math.round(1800 + (Math.sin(level * 13) * 600) + (100 - Math.min(100, distance * 2)) * 12);
+    const institutionalLots = Math.round(1800 + (Math.sin(level * 17) * 500) + (100 - Math.min(100, distance * 5)) * 15);
     const type = isAbove ? 'ASK_SUPPLY_WALL' : 'BID_DEMAND_WALL';
 
     return {
       price: level,
       type,
-      label: `$${level.toLocaleString()}`,
+      label: `$${level.toFixed(2)}`,
       institutionalLots,
-      significance: level % 50 === 0 ? 'MAJOR_PSYCHOLOGICAL_HANDLE' : 'INTERMEDIATE_LIQUIDITY_POCKET',
-      intensity: Math.min(100, Math.round((institutionalLots / 3000) * 100))
+      significance: level % 10 === 0 ? '5M MAJOR LIQUIDITY POOL' : '5M MICRO SCALP POCKET',
+      intensity: Math.min(100, Math.round((institutionalLots / 2800) * 100))
     };
   });
 
