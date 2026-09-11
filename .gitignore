@@ -5,3 +5,4 @@ dist/
 *.log
 npm-debug.log*
 server/data/terminal_settings.json
+server/data/calendar_cache.json
