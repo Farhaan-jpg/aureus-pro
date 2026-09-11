@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Settings, Bot, Volume2, VolumeX, Send, Key, 
-  ShieldCheck, AlertTriangle, CheckCircle, RefreshCw, Eye, EyeOff, Sliders, Bell
+  X, Settings, Volume2, VolumeX, Send,
+  ShieldCheck, AlertTriangle, CheckCircle, RefreshCw, Sliders, Bell
 } from 'lucide-react';
 import { 
   getVoiceSettings, 
@@ -11,17 +11,10 @@ import {
 } from '../utils/voiceAlerts';
 
 export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
-  const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'ai' | 'telegram' | 'terminal'
+  const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'telegram' | 'terminal'
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  // AI Keys State
-  const [geminiKey, setGeminiKey] = useState('');
-  const [openRouterKey, setOpenRouterKey] = useState('');
-  const [showGemini, setShowGemini] = useState(false);
-  const [showOpenRouter, setShowOpenRouter] = useState(false);
-  const [serverAiStatus, setServerAiStatus] = useState({ hasGeminiKey: false, hasOpenRouterKey: false });
 
   // Voice Settings State
   const [voiceConfig, setVoiceConfig] = useState(getVoiceSettings());
@@ -119,8 +112,6 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
       const payload = {
         telegram: telegramConfig
       };
-      if (geminiKey.trim()) payload.geminiApiKey = geminiKey.trim();
-      if (openRouterKey.trim()) payload.openRouterApiKey = openRouterKey.trim();
 
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -162,7 +153,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                   REALTIME
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400 font-mono">Customize AI models, Indian English voice alerts, and Telegram feeds</p>
+              <p className="text-[11px] text-slate-400 font-mono">Customize Indian English voice alerts and Telegram feeds</p>
             </div>
           </div>
           <button 
@@ -197,18 +188,6 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
           >
             <Send className="w-3.5 h-3.5" />
             Telegram Alerts
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ai')}
-            className={`flex items-center gap-2 px-3 py-3 text-xs font-mono font-medium border-b-2 transition whitespace-nowrap ${
-              activeTab === 'ai' 
-                ? 'border-gold-400 text-gold-400' 
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Key className="w-3.5 h-3.5" />
-            AI API Keys
           </button>
 
           <button
@@ -463,83 +442,6 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* TAB 3: AI Keys */}
-          {activeTab === 'ai' && (
-            <div className="space-y-4">
-              <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/20 flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="text-xs">
-                  <span className="font-semibold text-emerald-300 block">Custom AI Model Intelligence</span>
-                  <p className="text-slate-300 mt-0.5">
-                    Add your personal Gemini or OpenRouter keys for zero-rate-limit 5-minute commentary. If omitted, Tier-3 Deterministic Floor Trader Engine provides instant 85ms market analysis.
-                  </p>
-                </div>
-              </div>
-
-              {/* Gemini Key */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-mono font-medium text-slate-300 flex items-center gap-2">
-                    Google Gemini API Key
-                    {serverAiStatus.hasGeminiKey && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        KEY CONFIGURED
-                      </span>
-                    )}
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-mono">Uses gemini-3.6-flash</span>
-                </div>
-                <div className="relative">
-                  <input 
-                    type={showGemini ? 'text' : 'password'}
-                    placeholder={serverAiStatus.hasGeminiKey ? 'Enter new key to replace existing' : 'AIzaSy...'}
-                    value={geminiKey}
-                    onChange={e => setGeminiKey(e.target.value)}
-                    className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-slate-900 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-gold-500 transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowGemini(!showGemini)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
-                  >
-                    {showGemini ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* OpenRouter Key */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-mono font-medium text-slate-300 flex items-center gap-2">
-                    OpenRouter API Key (Fallback)
-                    {serverAiStatus.hasOpenRouterKey && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        KEY CONFIGURED
-                      </span>
-                    )}
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-mono">Free models fallback</span>
-                </div>
-                <div className="relative">
-                  <input 
-                    type={showOpenRouter ? 'text' : 'password'}
-                    placeholder={serverAiStatus.hasOpenRouterKey ? 'Enter new key to replace existing' : 'sk-or-v1-...'}
-                    value={openRouterKey}
-                    onChange={e => setOpenRouterKey(e.target.value)}
-                    className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-slate-900 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-gold-500 transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowOpenRouter(!showOpenRouter)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
-                  >
-                    {showOpenRouter ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 

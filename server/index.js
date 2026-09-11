@@ -67,6 +67,12 @@ const server = app.listen(config.port, () => {
   console.log(`  Port: http://localhost:${config.port}                `);
   console.log(`  Environment: ${config.nodeEnv}                       `);
   console.log(`  Keep-Alive Heartbeat: /healthz                       `);
+  if (!config.fredApiKey) {
+    console.log(`  WARNING: FRED_API_KEY is not set. Real yields will use `);
+    console.log(`  the CSV fallback tier. Add it in .env and re-deploy.  `);
+  } else {
+    console.log(`  FRED API tier: ENABLED (real yields DGS10 - T10YIE)   `);
+  }
   console.log(`=======================================================`);
 
   // Start background worker for cron tasks & live broadcasting

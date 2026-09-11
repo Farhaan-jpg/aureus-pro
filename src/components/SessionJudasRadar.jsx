@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Clock, Crosshair, AlertTriangle, CheckCircle2, ChevronRight, Flame } from 'lucide-react';
 
-export default function SessionJudasRadar({ currentPrice = 4390, marketData = null }) {
+export default function SessionJudasRadar({ currentPrice = null, marketData = null }) {
   const [utcTime, setUtcTime] = useState(new Date());
 
   // Real-time UTC clock updater

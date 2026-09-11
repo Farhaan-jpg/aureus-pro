@@ -372,21 +372,38 @@ function loadCache() {
       const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed?.events) && parsed.events.length > 0) {
+        // Normalize legacy caches (pre source-label era) to benchmark
+        if (!parsed.feedSource) parsed.feedSource = 'benchmark';
+        parsed.events = parsed.events.map(evt => ({
+          ...evt,
+          isEstimated: evt.isEstimated ?? (parsed.feedSource !== 'forexfactory')
+        }));
         cachedCalendar = parsed;
         return;
       }
     }
   } catch (e) {}
 
-  // Fallback to enriched benchmark
-  const enriched = BENCHMARK_EVENTS.map(evt => ({
-    ...evt,
-    goldImpactRule: generateGoldImpactRule(evt.title, evt.country, evt.impact)
-  }));
+  // Fallback to enriched benchmark — keep only near-term window so the
+  // estimated schedule never shows stale/frozen dates.
+  const now = Date.now();
+  const windowStart = now - 6 * 60 * 60 * 1000;   // allow already-released morning events
+  const windowEnd = now + 14 * 24 * 60 * 60 * 1000; // up to 2 weeks ahead
+  const enriched = BENCHMARK_EVENTS
+    .filter(evt => {
+      const t = new Date(evt.date).getTime();
+      return t >= windowStart && t <= windowEnd;
+    })
+    .map(evt => ({
+      ...evt,
+      isEstimated: true,
+      goldImpactRule: generateGoldImpactRule(evt.title, evt.country, evt.impact)
+    }));
 
   cachedCalendar = {
     events: enriched,
     matrixRules: MATRIX_RULES,
+    feedSource: 'benchmark',
     lastUpdated: new Date().toISOString()
   };
 
@@ -436,6 +453,7 @@ async function fetchForexFactoryFeed() {
         forecast: item.forecast || '',
         previous: item.previous || '',
         isGoldDriver,
+        isEstimated: false,
         goldImpactRule: generateGoldImpactRule(item.title || '', country, impact)
       };
     });
@@ -446,6 +464,7 @@ async function fetchForexFactoryFeed() {
     return {
       events: mappedEvents,
       matrixRules: MATRIX_RULES,
+      feedSource: 'forexfactory',
       lastUpdated: new Date().toISOString()
     };
   } catch (err) {

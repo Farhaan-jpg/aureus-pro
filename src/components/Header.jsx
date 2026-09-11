@@ -104,8 +104,8 @@ export default function Header({
             <div className="hidden xl:flex items-center gap-3 text-[11px] text-slate-400 font-mono pl-1 border-l border-white/10">
               <span>H: <strong className="text-slate-200">${Number(gold.high || gold.price || 0).toFixed(2)}</strong></span>
               <span>L: <strong className="text-slate-200">${Number(gold.low || gold.price || 0).toFixed(2)}</strong></span>
-              <span>Bid: <strong className="text-slate-200">${Number(gold.bid || ((gold.price || 4380) - 0.20)).toFixed(2)}</strong></span>
-              <span>Ask: <strong className="text-slate-200">${Number(gold.ask || ((gold.price || 4380) + 0.20)).toFixed(2)}</strong></span>
+              <span>Bid: <strong className="text-slate-200">${gold.bid != null ? Number(gold.bid).toFixed(2) : (gold.price != null ? Number(gold.price - 0.20).toFixed(2) : '---')}</strong></span>
+              <span>Ask: <strong className="text-slate-200">${gold.ask != null ? Number(gold.ask).toFixed(2) : (gold.price != null ? Number(gold.price + 0.20).toFixed(2) : '---')}</strong></span>
               <span>Spread: <strong className="text-gold-400">${Number(marketData?.spread || gold.spread || 0.40).toFixed(2)}</strong></span>
             </div>
             <div className="flex xl:hidden items-center gap-2 text-[11px] text-slate-400 font-mono">

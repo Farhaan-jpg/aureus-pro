@@ -7,7 +7,7 @@ const STORAGE_KEY = 'aureus_custom_price_alerts';
 export default function PriceAlertManager({
   isOpen,
   onClose,
-  currentPrice = 4390,
+  currentPrice = null,
   voiceEnabled = true
 }) {
   const [alerts, setAlerts] = useState(() => {

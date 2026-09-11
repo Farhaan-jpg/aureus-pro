@@ -54,9 +54,16 @@ export default function EconomicCalendar({ calendarData }) {
             <Calendar className="w-4 h-4 text-gold-400" />
             <h2 className="font-mono font-bold text-xs tracking-wider text-slate-200 uppercase flex items-center gap-1.5 flex-wrap">
               <span>Module F: Economic Calendar & Gold Impact Matrix</span>
-              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                FOREX FACTORY LIVE
-              </span>
+              {calendarData?.feedSource === 'forexfactory' ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE FEED
+                </span>
+              ) : (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30" title="ForexFactory feed unreachable — showing nearest known release schedule. Estimates are starred in the list.">
+                  ESTIMATED SCHEDULE
+                </span>
+              )}
               <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 AUTO-PURGE RELEASED
@@ -174,6 +181,11 @@ export default function EconomicCalendar({ calendarData }) {
                           <span className="text-xs font-bold text-white font-mono truncate">
                             {evt.title}
                           </span>
+                          {evt.isEstimated && (
+                            <span className="text-[9px] px-1 py-0.5 rounded font-mono font-bold bg-amber-950/60 text-amber-400 border border-amber-600/40" title="Estimated schedule (ForexFactory feed unreachable)">
+                              EST *
+                            </span>
+                          )}
                         </div>
 
                         {/* Triad: Actual vs Forecast vs Previous */}

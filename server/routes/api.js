@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import { getMarketData, getCachedMarketData } from '../services/marketData.js';
 import { aggregateAllNews, getCachedNews } from '../services/rssNews.js';
 import { classifyAllNews } from '../services/sentimentEngine.js';
-import { generateFloorAnalysis, getCachedFloorAnalysis } from '../services/aiStrategist.js';
 import { calculateCompositeBias } from '../services/compositeBias.js';
 import { getRetailSentiment } from '../services/retailSentiment.js';
 import { getEconomicCalendar } from '../services/economicCalendar.js';
@@ -16,20 +15,11 @@ import { refreshGoldEtfFlows, getGoldEtfFlows } from '../services/goldEtfFlows.j
 import { refreshGeoRisk, getGeoRisk } from '../services/geoRisk.js';
 import { refreshFredMacro, getFredMacro } from '../services/fredMacro.js';
 import { refreshTimeframeMatrix, getTimeframeMatrix } from '../services/timeframeMatrix.js';
-import { config } from '../config.js';
 
 const router = Router();
 
 const __api_dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE_PATH = path.join(__api_dirname, '../data/terminal_settings.json');
-
-try {
-  if (fs.existsSync(SETTINGS_FILE_PATH)) {
-    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE_PATH, 'utf-8'));
-    if (saved.geminiApiKey) config.geminiApiKey = saved.geminiApiKey;
-    if (saved.openRouterApiKey) config.openRouterApiKey = saved.openRouterApiKey;
-  }
-} catch (e) {}
 
 function buildBias(marketData, classifiedNews, retail) {
   return calculateCompositeBias(marketData, classifiedNews, retail, {
@@ -89,32 +79,7 @@ router.get('/orderbook-sentiment', async (req, res) => {
 });
 
 router.get('/strategist', async (req, res) => {
-  try {
-    let cached = getCachedFloorAnalysis();
-    if (!cached) {
-      const marketData = await getMarketData();
-      const classifiedNews = classifyAllNews(getCachedNews());
-      const retail = getRetailSentiment(marketData.goldSpot.price);
-      const bias = buildBias(marketData, classifiedNews, retail);
-      cached = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
-    }
-    res.json(cached);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/strategist/generate', async (req, res) => {
-  try {
-    const marketData = await getMarketData();
-    const classifiedNews = classifyAllNews(await aggregateAllNews());
-    const retail = getRetailSentiment(marketData.goldSpot.price);
-    const bias = buildBias(marketData, classifiedNews, retail);
-    const analysis = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
-    res.json(analysis);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.status(410).json({ error: 'Floor Strategist endpoint has been removed.' });
 });
 
 router.post('/refresh', async (req, res) => {
@@ -174,15 +139,7 @@ router.get('/timeframes', async (req, res) => {
 router.get('/settings', (req, res) => {
   try {
     const telegram = getTelegramConfig();
-    res.json({
-      ai: {
-        hasGeminiKey: Boolean(config.geminiApiKey),
-        geminiKeyMasked: config.geminiApiKey ? `${config.geminiApiKey.slice(0, 6)}...${config.geminiApiKey.slice(-4)}` : '',
-        hasOpenRouterKey: Boolean(config.openRouterApiKey),
-        openRouterKeyMasked: config.openRouterApiKey ? `${config.openRouterApiKey.slice(0, 6)}...${config.openRouterApiKey.slice(-4)}` : ''
-      },
-      telegram
-    });
+    res.json({ telegram });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -190,7 +147,7 @@ router.get('/settings', (req, res) => {
 
 router.post('/settings', (req, res) => {
   try {
-    const { geminiApiKey, openRouterApiKey, telegram } = req.body;
+    const { telegram } = req.body;
     let saved = {};
 
     try {
@@ -198,15 +155,6 @@ router.post('/settings', (req, res) => {
         saved = JSON.parse(fs.readFileSync(SETTINGS_FILE_PATH, 'utf-8'));
       }
     } catch (e) {}
-
-    if (geminiApiKey !== undefined && geminiApiKey.trim() !== '') {
-      config.geminiApiKey = geminiApiKey.trim();
-      saved.geminiApiKey = geminiApiKey.trim();
-    }
-    if (openRouterApiKey !== undefined && openRouterApiKey.trim() !== '') {
-      config.openRouterApiKey = openRouterApiKey.trim();
-      saved.openRouterApiKey = openRouterApiKey.trim();
-    }
 
     if (telegram) {
       updateTelegramConfig(telegram);
@@ -217,10 +165,6 @@ router.post('/settings', (req, res) => {
     res.json({
       success: true,
       message: 'Terminal settings updated successfully.',
-      ai: {
-        hasGeminiKey: Boolean(config.geminiApiKey),
-        hasOpenRouterKey: Boolean(config.openRouterApiKey)
-      },
       telegram: getTelegramConfig()
     });
   } catch (err) {

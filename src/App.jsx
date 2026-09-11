@@ -325,7 +325,7 @@ export default function App() {
         <div>
           <MultiTimeframeMatrix
             matrix={timeframes}
-            currentPrice={marketData?.goldSpot?.price || 4390}
+currentPrice={marketData?.goldSpot?.price}
             changePercent={marketData?.goldSpot?.changePercent || 0}
           />
         </div>
@@ -357,14 +357,14 @@ export default function App() {
           <div className="flex flex-col h-full">
             <OrderBookSentiment
               retailData={retail}
-              currentGoldPrice={marketData?.goldSpot?.price || 4385}
+              currentGoldPrice={marketData?.goldSpot?.price}
             />
           </div>
 
           {/* Institutional ICT Session & Judas Swing Radar */}
           <div className="flex flex-col h-full">
             <SessionJudasRadar
-              currentPrice={marketData?.goldSpot?.price || 4390}
+currentPrice={marketData?.goldSpot?.price}
               marketData={marketData}
             />
           </div>
@@ -422,8 +422,6 @@ export default function App() {
             <span>COMEX / LONDON OTC LIQUIDITY BUS</span>
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>Primary AI: Google Gemini 3.6 Flash</span>
-            <span>Fallback AI: OpenRouter Multi-Model</span>
             <span>Keep-Alive: /healthz</span>
           </div>
         </div>
