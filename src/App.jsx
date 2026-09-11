@@ -105,12 +105,17 @@ export default function App() {
 
     connectSSE();
 
-    // Fallback background polling every 20s in case SSE is blocked by proxy
+    // Fast 2s fallback polling in case SSE is temporarily reconnecting
     const pollInterval = setInterval(() => {
       if (!isLive) {
-        loadInitialData();
+        fetch('/api/market-data')
+          .then(r => r.json())
+          .then(data => {
+            if (data?.goldSpot) setMarketData(data);
+          })
+          .catch(() => {});
       }
-    }, 20000);
+    }, 2000);
 
     return () => {
       if (eventSource) eventSource.close();

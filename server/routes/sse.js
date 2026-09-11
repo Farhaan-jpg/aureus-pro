@@ -1,10 +1,15 @@
 // Server-Sent Events (SSE) Bus
 // Broadcasts low-latency market ticks, sentiment shifts, and AI updates to connected institutional clients.
+import { getCachedMarketData } from '../services/marketData.js';
+import { getCachedNews } from '../services/rssNews.js';
+import { classifyAllNews } from '../services/sentimentEngine.js';
+import { getRetailSentiment } from '../services/retailSentiment.js';
+import { calculateCompositeBias } from '../services/compositeBias.js';
 
 const sseClients = new Set();
 
 export function sseHandler(req, res) {
-  // Set required headers for SSE
+  // Set required headers for SSE with zero proxy buffering
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -13,8 +18,29 @@ export function sseHandler(req, res) {
     'X-Accel-Buffering': 'no'
   });
 
-  // Send initial connection packet
-  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', message: 'Connected to Aureus Pro Live Institutional Feed', timestamp: Date.now() })}\n\n`);
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  // Send initial connection packet with event name
+  res.write(`event: CONNECTED\ndata: ${JSON.stringify({ status: 'CONNECTED', timestamp: Date.now() })}\n\n`);
+
+  // Instantly send current market data to new client with 0 delay
+  const cached = getCachedMarketData();
+  if (cached) {
+    try {
+      const currentNews = getCachedNews();
+      const classifiedNews = classifyAllNews(currentNews);
+      const retail = getRetailSentiment(cached.goldSpot?.price || 4335);
+      const bias = calculateCompositeBias(cached, classifiedNews, retail);
+
+      res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({
+        marketData: cached,
+        bias,
+        retail
+      })}\n\n`);
+    } catch (err) {}
+  }
 
   sseClients.add(res);
 

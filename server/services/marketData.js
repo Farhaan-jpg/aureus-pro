@@ -196,11 +196,13 @@ function generateMicroTick(key) {
 
 let lastTvFetch = 0;
 let lastYahooFetch = 0;
+let isFetchingTv = false;
+let isFetchingYahoo = false;
 const anchorQuotes = {};
 
 export async function getMarketData() {
   const now = Date.now();
-  const shouldRefreshTv = (now - lastTvFetch) > 2500; // Refresh TV quotes every 2.5s for real-time chart sync
+  const shouldRefreshTv = (now - lastTvFetch) > 1000; // Refresh TV quotes every 1.0s in background
   const shouldRefreshYahoo = (now - lastYahooFetch) > 15000; // Refresh Yahoo yields/crude every 15s
 
   const tvTickers = [];
@@ -214,8 +216,8 @@ export async function getMarketData() {
     }
   }
 
-  // 1. Fetch TradingView quotes in one fast batch
-  if (shouldRefreshTv || !anchorQuotes.GOLD) {
+  // 1. Initial boot fetch: await once so the server starts with genuine quotes
+  if (!anchorQuotes.GOLD) {
     lastTvFetch = now;
     const tvQuotes = await fetchTradingViewQuotes(tvTickers.map(t => t.symbol));
     for (const item of tvTickers) {
@@ -223,10 +225,7 @@ export async function getMarketData() {
         anchorQuotes[item.key] = tvQuotes[item.symbol];
       }
     }
-  }
-
-  // 2. Fetch Yahoo quotes if needed
-  if (shouldRefreshYahoo || yahooTickers.some(t => !anchorQuotes[t.key])) {
+    // Also fetch initial Yahoo quotes
     lastYahooFetch = now;
     await Promise.all(
       yahooTickers.map(async (item) => {
@@ -236,6 +235,40 @@ export async function getMarketData() {
         }
       })
     );
+  } else {
+    // Zero-delay continuous non-blocking background refresh every 1000ms
+    if (shouldRefreshTv && !isFetchingTv) {
+      isFetchingTv = true;
+      lastTvFetch = now;
+      fetchTradingViewQuotes(tvTickers.map(t => t.symbol))
+        .then(tvQuotes => {
+          for (const item of tvTickers) {
+            if (tvQuotes[item.symbol]) {
+              anchorQuotes[item.key] = tvQuotes[item.symbol];
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          isFetchingTv = false;
+        });
+    }
+
+    // Zero-delay background refresh for Yahoo macro yields
+    if (shouldRefreshYahoo && !isFetchingYahoo) {
+      isFetchingYahoo = true;
+      lastYahooFetch = now;
+      Promise.all(
+        yahooTickers.map(async (item) => {
+          const quote = await fetchYahooQuote(item.symbol);
+          if (quote) {
+            anchorQuotes[item.key] = quote;
+          }
+        })
+      ).catch(() => {}).finally(() => {
+        isFetchingYahoo = false;
+      });
+    }
   }
 
   const results = {};

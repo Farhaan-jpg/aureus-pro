@@ -10,7 +10,7 @@ export const config = {
   alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY || '',
   
   // Market polling intervals (milliseconds)
-  marketRefreshMs: 2000,    // 2 seconds for zero-delay live tick streaming
+  marketRefreshMs: 1000,    // 1000ms (1 second) for zero-delay live tick streaming
   newsRefreshMs: 180000,    // 3 minutes
   aiRefreshMs: 600000,      // 10 minutes
 };

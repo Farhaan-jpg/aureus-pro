@@ -1,5 +1,5 @@
 import { getMarketData } from './marketData.js';
-import { aggregateAllNews } from './rssNews.js';
+import { aggregateAllNews, getCachedNews } from './rssNews.js';
 import { classifyAllNews } from './sentimentEngine.js';
 import { getRetailSentiment } from './retailSentiment.js';
 import { calculateCompositeBias } from './compositeBias.js';
@@ -18,16 +18,16 @@ export function startBackgroundWorker() {
   // 1. Initial Data Fetch
   refreshAndBroadcast();
 
-  // 2. High-Frequency Market Poller (every 15s)
+  // 2. High-Frequency Market Poller (1000ms / 1s with zero external I/O delay)
   setInterval(async () => {
     try {
       const marketData = await getMarketData();
-      const rawNews = await aggregateAllNews();
-      const classifiedNews = classifyAllNews(rawNews);
+      const currentNews = getCachedNews();
+      const classifiedNews = classifyAllNews(currentNews);
       const retail = getRetailSentiment(marketData.goldSpot.price);
       const bias = calculateCompositeBias(marketData, classifiedNews, retail);
 
-      // Broadcast market tick packet
+      // Broadcast market tick packet immediately
       broadcastToAll('TICK_UPDATE', {
         marketData,
         bias,
