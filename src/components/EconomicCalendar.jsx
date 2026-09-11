@@ -13,10 +13,13 @@ export default function EconomicCalendar({ calendarData }) {
   const allEvents = calendarData?.events || [];
   const matrixRules = calendarData?.matrixRules || [];
 
-  // Filter events based on active tab
+  // Auto-delete all released economic events: strictly keep upcoming releases where eventTime > now
+  const upcomingEvents = allEvents.filter(e => new Date(e.date).getTime() > now);
+
+  // Filter upcoming events based on active tab
   const displayedEvents = activeTab === 'GOLD_DRIVERS'
-    ? allEvents.filter(e => e.isGoldDriver || e.currency === 'USD' || e.impact === 'HIGH' || e.impact === 'CRITICAL')
-    : allEvents;
+    ? upcomingEvents.filter(e => e.isGoldDriver || e.currency === 'USD' || e.impact === 'HIGH' || e.impact === 'CRITICAL')
+    : upcomingEvents;
 
   function formatCountdown(targetDateStr) {
     const diff = new Date(targetDateStr).getTime() - now;
@@ -49,6 +52,10 @@ export default function EconomicCalendar({ calendarData }) {
               <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 FOREX FACTORY LIVE
               </span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                AUTO-PURGE RELEASED
+              </span>
             </h2>
           </div>
 
@@ -62,7 +69,7 @@ export default function EconomicCalendar({ calendarData }) {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Gold Drivers (USD/High)
+              Gold Drivers ({upcomingEvents.filter(e => e.isGoldDriver || e.currency === 'USD' || e.impact === 'HIGH' || e.impact === 'CRITICAL').length})
             </button>
             <button
               onClick={() => setActiveTab('ALL_EVENTS')}
@@ -72,7 +79,7 @@ export default function EconomicCalendar({ calendarData }) {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              All Releases ({allEvents.length})
+              All Upcoming ({upcomingEvents.length})
             </button>
             <button
               onClick={() => setActiveTab('MATRIX')}
