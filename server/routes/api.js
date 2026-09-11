@@ -46,8 +46,13 @@ router.get('/composite-bias', async (req, res) => {
 });
 
 // GET /api/economic-calendar
-router.get('/economic-calendar', (req, res) => {
-  res.json(getEconomicCalendar());
+router.get('/economic-calendar', async (req, res) => {
+  try {
+    const calendar = await getEconomicCalendar();
+    res.json(calendar);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/orderbook-sentiment
