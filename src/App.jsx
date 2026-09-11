@@ -23,10 +23,12 @@ import {
   speakHandleSweep
 } from './utils/voiceAlerts';
 
-export default function App() {
-  // Heavy TradingView widget (large inline Pine Script) — lazy-loaded to cut initial bundle
-  const TradingViewChart = lazy(() => import('./components/TradingViewChart'));
+// Heavy TradingView widget (large inline Pine Script) — lazy-loaded at module scope
+// so its component identity stays stable across re-renders (a locally-defined lazy
+// component would remount on every market tick and cause constant chart flicker).
+const TradingViewChart = lazy(() => import('./components/TradingViewChart'));
 
+export default function App() {
   const [marketData, setMarketData] = useState(null);
   const [news, setNews] = useState([]);
   const [bias, setBias] = useState(null);
