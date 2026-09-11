@@ -25,7 +25,7 @@ You MUST reply ONLY with a valid JSON object strictly matching this schema:
 
 // Deterministic Rule-Based Institutional Engine (Tier 3 Fallback - Pure Market Intelligence)
 export function generateDeterministicAnalysis(marketData, newsItems, biasScore) {
-  const goldPrice = marketData?.goldSpot?.price || 2685.00;
+  const goldPrice = marketData?.goldSpot?.price || 4335.00;
   const dxy = marketData?.assets?.DXY?.price || 104.3;
   const realYield = marketData?.realYield10Y || 2.15;
   const session = marketData?.session || 'NY_OVERLAP';
@@ -192,7 +192,7 @@ let cachedAnalysis = null;
 
 // Multi-LLM Orchestrator with 3-tier Failover
 export async function generateFloorAnalysis(marketData, newsList = [], biasScore = 0) {
-  const goldPrice = marketData?.goldSpot?.price || 2685.00;
+  const goldPrice = marketData?.goldSpot?.price || 4335.00;
   const dxy = marketData?.assets?.DXY?.price || 104.3;
   const dxyChange = marketData?.assets?.DXY?.changePercent || 0;
   const silver = marketData?.assets?.SILVER?.price || 31.8;

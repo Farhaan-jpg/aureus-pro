@@ -2,15 +2,15 @@
 // Tracks XAU/USD, correlated commodities, macro drivers, and computes rolling correlations.
 
 const ASSETS = {
-  GOLD: { symbol: 'GC=F', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', basePrice: 2685.40 },
-  SILVER: { symbol: 'SI=F', name: 'Silver Spot', display: 'XAG/USD', category: 'metal', basePrice: 31.85 },
+  GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', basePrice: 4335.00 },
+  SILVER: { symbol: 'TVC:SILVER', name: 'Silver Spot', display: 'XAG/USD', category: 'metal', basePrice: 63.80 },
   CRUDE_OIL: { symbol: 'CL=F', name: 'WTI Crude Oil', display: 'USOIL', category: 'energy', basePrice: 68.75 },
   COPPER: { symbol: 'HG=F', name: 'Copper Futures', display: 'HG/USD', category: 'metal', basePrice: 4.12 },
-  PLATINUM: { symbol: 'PL=F', name: 'Platinum', display: 'XPT/USD', category: 'metal', basePrice: 968.20 },
-  DXY: { symbol: 'DX-Y.NYB', name: 'US Dollar Index', display: 'DXY', category: 'currency', basePrice: 104.35 },
+  PLATINUM: { symbol: 'TVC:PLATINUM', name: 'Platinum', display: 'XPT/USD', category: 'metal', basePrice: 1794.80 },
+  DXY: { symbol: 'TVC:DXY', name: 'US Dollar Index', display: 'DXY', category: 'currency', basePrice: 99.16 },
   US10Y: { symbol: '^TNX', name: 'US 10Y Yield', display: 'US10Y', category: 'rate', basePrice: 4.42 },
   US02Y: { symbol: '^IRX', name: 'US 2Y Yield', display: 'US02Y', category: 'rate', basePrice: 4.28 },
-  VIX: { symbol: '^VIX', name: 'CBOE Volatility', display: 'VIX', category: 'volatility', basePrice: 15.60 }
+  VIX: { symbol: 'TVC:VIX', name: 'CBOE Volatility', display: 'VIX', category: 'volatility', basePrice: 17.08 }
 };
 
 let cachedMarketData = null;
@@ -112,11 +112,67 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
-// Fallback synthetic micro-tick engine if Yahoo API rate limits or blocks
+// Batch fetch real-time quotes directly from TradingView Scanner API (OANDA / TVC feeds)
+async function fetchTradingViewQuotes(symbols) {
+  if (!symbols || symbols.length === 0) return {};
+  try {
+    const url = 'https://scanner.tradingview.com/cfd/scan';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: JSON.stringify({
+        symbols: { tickers: symbols },
+        columns: ['close', 'change', 'change_abs', 'high', 'low', 'bid', 'ask']
+      })
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return {};
+    const json = await res.json();
+    const result = {};
+    if (Array.isArray(json?.data)) {
+      for (const item of json.data) {
+        const s = item.s;
+        const d = item.d;
+        if (!d) continue;
+        const close = d[0];
+        const changePercent = d[1] || 0;
+        const changeAbs = d[2] || 0;
+        const high = d[3] || close;
+        const low = d[4] || close;
+        const bid = d[5];
+        const ask = d[6];
+        const spread = (bid != null && ask != null && ask >= bid) ? Number((ask - bid).toFixed(2)) : null;
+
+        result[s] = {
+          price: Number(close.toFixed(s.includes('DXY') || s.includes('HG') ? 3 : 2)),
+          previousClose: Number((close - changeAbs).toFixed(2)),
+          change: Number(changeAbs.toFixed(2)),
+          changePercent: Number(changePercent.toFixed(2)),
+          high: Number(high.toFixed(2)),
+          low: Number(low.toFixed(2)),
+          spread,
+          quotes: [low, close, high]
+        };
+      }
+    }
+    return result;
+  } catch (err) {
+    return {};
+  }
+}
+
+// Fallback synthetic micro-tick engine if APIs rate limit or are unreachable
 function generateMicroTick(key) {
   const asset = ASSETS[key];
   const lastPrice = priceHistory[key][priceHistory[key].length - 1] || asset.basePrice;
-  // Natural realistic volatility drift
   const driftFactor = (Math.random() - 0.495) * 0.0015;
   const newPrice = Number((lastPrice * (1 + driftFactor)).toFixed(key === 'COPPER' || key.includes('Y') ? 3 : 2));
 
@@ -138,76 +194,100 @@ function generateMicroTick(key) {
   };
 }
 
-let lastAnchorFetch = 0;
+let lastTvFetch = 0;
+let lastYahooFetch = 0;
 const anchorQuotes = {};
 
 export async function getMarketData() {
   const now = Date.now();
-  const shouldRefreshAnchor = (now - lastAnchorFetch) > 15000;
-  if (shouldRefreshAnchor) {
-    lastAnchorFetch = now;
+  const shouldRefreshTv = (now - lastTvFetch) > 2500; // Refresh TV quotes every 2.5s for real-time chart sync
+  const shouldRefreshYahoo = (now - lastYahooFetch) > 15000; // Refresh Yahoo yields/crude every 15s
+
+  const tvTickers = [];
+  const yahooTickers = [];
+
+  for (const [key, def] of Object.entries(ASSETS)) {
+    if (def.symbol.includes(':')) {
+      tvTickers.push({ key, symbol: def.symbol });
+    } else {
+      yahooTickers.push({ key, symbol: def.symbol });
+    }
+  }
+
+  // 1. Fetch TradingView quotes in one fast batch
+  if (shouldRefreshTv || !anchorQuotes.GOLD) {
+    lastTvFetch = now;
+    const tvQuotes = await fetchTradingViewQuotes(tvTickers.map(t => t.symbol));
+    for (const item of tvTickers) {
+      if (tvQuotes[item.symbol]) {
+        anchorQuotes[item.key] = tvQuotes[item.symbol];
+      }
+    }
+  }
+
+  // 2. Fetch Yahoo quotes if needed
+  if (shouldRefreshYahoo || yahooTickers.some(t => !anchorQuotes[t.key])) {
+    lastYahooFetch = now;
+    await Promise.all(
+      yahooTickers.map(async (item) => {
+        const quote = await fetchYahooQuote(item.symbol);
+        if (quote) {
+          anchorQuotes[item.key] = quote;
+        }
+      })
+    );
   }
 
   const results = {};
-  const tasks = Object.keys(ASSETS).map(async (key) => {
-    const def = ASSETS[key];
-    let quote = null;
+  for (const [key, def] of Object.entries(ASSETS)) {
+    let quote = anchorQuotes[key];
 
-    if (shouldRefreshAnchor || !anchorQuotes[key]) {
-      quote = await fetchYahooQuote(def.symbol);
-      if (quote) {
-        anchorQuotes[key] = quote;
-      }
-    }
-
-    // If anchor exists, produce smooth realistic live micro-tick around benchmark
-    if (anchorQuotes[key]) {
-      const anchor = anchorQuotes[key];
-      const drift = (Math.random() - 0.495) * 0.0003;
-      const livePrice = Number((anchor.price * (1 + drift)).toFixed(key === 'COPPER' || key.includes('Y') ? 3 : 2));
-      const change = Number((livePrice - anchor.previousClose).toFixed(2));
-      const changePercent = Number(((change / anchor.previousClose) * 100).toFixed(2));
-      
-      priceHistory[key].push(livePrice);
+    if (quote) {
+      const price = quote.price;
+      priceHistory[key].push(price);
       if (priceHistory[key].length > 60) priceHistory[key].shift();
 
-      quote = {
-        price: livePrice,
-        previousClose: anchor.previousClose,
-        change,
-        changePercent,
-        high: Math.max(anchor.high, livePrice),
-        low: Math.min(anchor.low, livePrice),
-        quotes: priceHistory[key]
+      results[key] = {
+        id: key,
+        symbol: def.symbol,
+        display: def.display,
+        name: def.name,
+        category: def.category,
+        price: quote.price,
+        change: quote.change,
+        changePercent: quote.changePercent,
+        high: quote.high,
+        low: quote.low,
+        spread: quote.spread,
+        history: priceHistory[key].slice(-15),
+        momentum: quote.changePercent > 0.4 ? 'STRONG_UP' : quote.changePercent > 0.05 ? 'UP' : quote.changePercent < -0.4 ? 'STRONG_DOWN' : quote.changePercent < -0.05 ? 'DOWN' : 'NEUTRAL'
       };
     } else {
-      quote = generateMicroTick(key);
+      const micro = generateMicroTick(key);
+      results[key] = {
+        id: key,
+        symbol: def.symbol,
+        display: def.display,
+        name: def.name,
+        category: def.category,
+        price: micro.price,
+        change: micro.change,
+        changePercent: micro.changePercent,
+        high: micro.high,
+        low: micro.low,
+        spread: 0.30,
+        history: priceHistory[key].slice(-15),
+        momentum: micro.changePercent > 0.4 ? 'STRONG_UP' : micro.changePercent > 0.05 ? 'UP' : micro.changePercent < -0.4 ? 'STRONG_DOWN' : micro.changePercent < -0.05 ? 'DOWN' : 'NEUTRAL'
+      };
     }
-
-    results[key] = {
-      id: key,
-      symbol: def.symbol,
-      display: def.display,
-      name: def.name,
-      category: def.category,
-      price: quote.price,
-      change: quote.change,
-      changePercent: quote.changePercent,
-      high: quote.high,
-      low: quote.low,
-      history: priceHistory[key].slice(-15),
-      momentum: quote.changePercent > 0.4 ? 'STRONG_UP' : quote.changePercent > 0.05 ? 'UP' : quote.changePercent < -0.4 ? 'STRONG_DOWN' : quote.changePercent < -0.05 ? 'DOWN' : 'NEUTRAL'
-    };
-  });
-
-  await Promise.all(tasks);
+  }
 
   // Compute Special Macro Metrics
   const goldPrice = results.GOLD.price;
   const silverPrice = results.SILVER.price;
-  const gsr = silverPrice > 0 ? Number((goldPrice / silverPrice).toFixed(2)) : 84.3;
+  const gsr = silverPrice > 0 ? Number((goldPrice / silverPrice).toFixed(2)) : 68.0;
 
-  // Real Yield = Nominal 10Y - 5Y5Y forward breakeven inflation proxy (typically ~2.25%)
+  // Real Yield = Nominal 10Y - 5Y5Y forward breakeven inflation proxy (~2.25%)
   const nominal10Y = results.US10Y.price;
   const estimatedBreakeven = 2.25;
   const realYield10Y = Number((nominal10Y - estimatedBreakeven).toFixed(2));
@@ -226,15 +306,15 @@ export async function getMarketData() {
     }
   }
 
-  // Calculate Gold Spread proxy (typical institutional ECN spread: $0.15 - $0.35)
-  const spread = Number((0.15 + (Math.random() * 0.12)).toFixed(2));
+  // Calculate Gold Spread: use real OANDA spread if available, else standard institutional spread
+  const spread = results.GOLD.spread != null ? results.GOLD.spread : Number((0.20 + (Math.random() * 0.10)).toFixed(2));
 
   // Determine current active trading session
   const currentDate = new Date();
   const utcHour = currentDate.getUTCHours();
   let session = 'ASIAN';
   if (utcHour >= 7 && utcHour < 12) session = 'LONDON_OPEN';
-  else if (utcHour >= 12 && utcHour < 16) session = 'NY_OVERLAP'; // London / NY Overlap (Highest Liquidity)
+  else if (utcHour >= 12 && utcHour < 16) session = 'NY_OVERLAP';
   else if (utcHour >= 16 && utcHour < 21) session = 'NY_AFTERNOON';
   else session = 'ASIAN_PACIFIC';
 

@@ -195,7 +195,7 @@ export default function App() {
           <div>
             <OrderBookSentiment
               retailData={retail}
-              currentGoldPrice={marketData?.goldSpot?.price || 2685}
+              currentGoldPrice={marketData?.goldSpot?.price || 4335}
             />
           </div>
 

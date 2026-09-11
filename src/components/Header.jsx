@@ -10,7 +10,7 @@ export default function Header({
   onGenerateAI,
   isAiGenerating
 }) {
-  const gold = marketData?.goldSpot || { price: 2685.40, change: 0, changePercent: 0, high: 2695, low: 2675 };
+  const gold = marketData?.goldSpot || { price: 4335.00, change: 0, changePercent: 0, high: 4350, low: 4310 };
   const isUp = gold.change >= 0;
   const session = marketData?.session || 'ASIAN';
 

@@ -1,6 +1,6 @@
 // Retail Sentiment & Institutional Order Flow Liquidity Proxy
 
-export function getRetailSentiment(currentGoldPrice = 2685) {
+export function getRetailSentiment(currentGoldPrice = 4335) {
   // Retail sentiment parameters (typically 70-80% of retail is stubbornly Long on Gold)
   const baseLong = 76.4;
   const jitter = (Math.sin(Date.now() / 600000) * 2.5);
