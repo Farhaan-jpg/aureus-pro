@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock } from 'lucide-react';
+import { Activity, Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings } from 'lucide-react';
 
 export default function Header({
   marketData,
@@ -8,7 +8,10 @@ export default function Header({
   isRefreshing,
   onRefresh,
   onGenerateAI,
-  isAiGenerating
+  isAiGenerating,
+  voiceEnabled,
+  onToggleVoice,
+  onOpenSettings
 }) {
   const gold = marketData?.goldSpot || { price: 4335.00, change: 0, changePercent: 0, high: 4350, low: 4310 };
   const isUp = gold.change >= 0;
@@ -143,6 +146,28 @@ export default function Header({
             title="Sync all market feeds"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-gold-400' : ''}`} />
+          </button>
+
+          {/* Voice Alert Quick Toggle */}
+          <button
+            onClick={onToggleVoice}
+            className={`p-1.5 rounded border transition active:scale-95 ${
+              voiceEnabled 
+                ? 'text-gold-400 bg-gold-950/50 border-gold-500/40 hover:bg-gold-900/60 shadow-sm shadow-gold-500/20' 
+                : 'text-slate-500 bg-slate-900 hover:bg-slate-800 border-white/10 hover:text-slate-300'
+            }`}
+            title={voiceEnabled ? 'Voice Alerts Active (Indian English Male) - Click to Mute' : 'Voice Alerts Muted - Click to Enable'}
+          >
+            {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          {/* Settings Modal Toggle */}
+          <button
+            onClick={onOpenSettings}
+            className="p-1.5 rounded text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-white/10 transition active:scale-95 hover:border-gold-500/30"
+            title="Terminal Settings & Custom Dispatch"
+          >
+            <Settings className="w-4 h-4" />
           </button>
         </div>
 
