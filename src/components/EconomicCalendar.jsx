@@ -54,9 +54,9 @@ export default function EconomicCalendar({ calendarData }) {
           </div>
         </div>
 
-        {/* Tab 1: Upcoming Events */}
+        {/* Tab 1: Upcoming Events - Scrollable */}
         {activeTab === 'UPCOMING' && (
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
             {/* Scalper Volatility Warning Alert */}
             <div className="bg-amber-950/30 border border-amber-500/30 p-2 rounded flex items-center justify-between text-[11px] font-mono">
               <span className="text-amber-400 font-bold flex items-center gap-1">

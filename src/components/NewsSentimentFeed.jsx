@@ -75,8 +75,8 @@ export default function NewsSentimentFeed({ news = [] }) {
         ))}
       </div>
 
-      {/* Headlines List */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+      {/* Headlines List - Fully Scrollable */}
+      <div className="flex-1 min-h-0 max-h-[460px] overflow-y-auto space-y-2.5 pr-2">
         {filteredNews.length === 0 ? (
           <div className="text-center py-12 text-slate-500 font-mono text-xs">
             No headlines match the active filter criteria.
