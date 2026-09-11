@@ -1,4 +1,4 @@
-import { getMarketData } from './marketData.js';
+import { getMarketData, onMarketTick } from './marketData.js';
 import { aggregateAllNews, getCachedNews } from './rssNews.js';
 import { classifyAllNews } from './sentimentEngine.js';
 import { getRetailSentiment } from './retailSentiment.js';
@@ -8,6 +8,40 @@ import { broadcastToAll } from '../routes/sse.js';
 import { config } from '../config.js';
 
 let isRunning = false;
+let lastTickBroadcast = 0;
+let pendingBroadcastTimer = null;
+
+async function broadcastTick() {
+  try {
+    const marketData = await getMarketData();
+    const currentNews = getCachedNews();
+    const classifiedNews = classifyAllNews(currentNews);
+    const retail = getRetailSentiment(marketData.goldSpot.price);
+    const bias = calculateCompositeBias(marketData, classifiedNews, retail);
+
+    broadcastToAll('TICK_UPDATE', {
+      marketData,
+      bias,
+      retail
+    });
+  } catch (err) {}
+}
+
+function scheduleTickBroadcast() {
+  const now = Date.now();
+  if (now - lastTickBroadcast < 300) {
+    if (!pendingBroadcastTimer) {
+      pendingBroadcastTimer = setTimeout(() => {
+        pendingBroadcastTimer = null;
+        lastTickBroadcast = Date.now();
+        broadcastTick();
+      }, 300);
+    }
+    return;
+  }
+  lastTickBroadcast = now;
+  broadcastTick();
+}
 
 export function startBackgroundWorker() {
   if (isRunning) return;
@@ -18,24 +52,16 @@ export function startBackgroundWorker() {
   // 1. Initial Data Fetch
   refreshAndBroadcast();
 
-  // 2. High-Frequency Market Poller (1000ms / 1s with zero external I/O delay)
-  setInterval(async () => {
-    try {
-      const marketData = await getMarketData();
-      const currentNews = getCachedNews();
-      const classifiedNews = classifyAllNews(currentNews);
-      const retail = getRetailSentiment(marketData.goldSpot.price);
-      const bias = calculateCompositeBias(marketData, classifiedNews, retail);
-
-      // Broadcast market tick packet immediately
-      broadcastToAll('TICK_UPDATE', {
-        marketData,
-        bias,
-        retail
-      });
-    } catch (err) {
-      console.error('[Worker Market Loop Error]:', err.message);
+  // 2. Hook real-time TradingView WebSocket ticks directly into SSE bus
+  onMarketTick((key) => {
+    if (key === 'GOLD' || key === 'DXY' || key === 'SILVER') {
+      scheduleTickBroadcast();
     }
+  });
+
+  // 3. Fallback High-Frequency Market Poller (every 1.0s)
+  setInterval(() => {
+    scheduleTickBroadcast();
   }, config.marketRefreshMs);
 
   // 3. News & Sentiment Poller (every 3 minutes)

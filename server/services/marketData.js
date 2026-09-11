@@ -1,20 +1,30 @@
 // Market Data Engine for Aureus Pro
-// Tracks XAU/USD, correlated commodities, macro drivers, and computes rolling correlations.
+// Real-time tick engine streaming directly from TradingView WebSocket + Yahoo Finance macro feeds.
 
 const ASSETS = {
-  GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', basePrice: 4335.00 },
-  SILVER: { symbol: 'TVC:SILVER', name: 'Silver Spot', display: 'XAG/USD', category: 'metal', basePrice: 63.80 },
-  CRUDE_OIL: { symbol: 'CL=F', name: 'WTI Crude Oil', display: 'USOIL', category: 'energy', basePrice: 68.75 },
+  GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', basePrice: 4380.00 },
+  SILVER: { symbol: 'TVC:SILVER', name: 'Silver Spot', display: 'XAG/USD', category: 'metal', basePrice: 65.00 },
+  CRUDE_OIL: { symbol: 'TVC:USOIL', name: 'WTI Crude Oil', display: 'USOIL', category: 'energy', basePrice: 99.30 },
   COPPER: { symbol: 'HG=F', name: 'Copper Futures', display: 'HG/USD', category: 'metal', basePrice: 4.12 },
-  PLATINUM: { symbol: 'TVC:PLATINUM', name: 'Platinum', display: 'XPT/USD', category: 'metal', basePrice: 1794.80 },
-  DXY: { symbol: 'TVC:DXY', name: 'US Dollar Index', display: 'DXY', category: 'currency', basePrice: 99.16 },
+  PLATINUM: { symbol: 'TVC:PLATINUM', name: 'Platinum', display: 'XPT/USD', category: 'metal', basePrice: 1807.00 },
+  DXY: { symbol: 'TVC:DXY', name: 'US Dollar Index', display: 'DXY', category: 'currency', basePrice: 99.06 },
   US10Y: { symbol: '^TNX', name: 'US 10Y Yield', display: 'US10Y', category: 'rate', basePrice: 4.42 },
   US02Y: { symbol: '^IRX', name: 'US 2Y Yield', display: 'US02Y', category: 'rate', basePrice: 4.28 },
-  VIX: { symbol: 'TVC:VIX', name: 'CBOE Volatility', display: 'VIX', category: 'volatility', basePrice: 17.08 }
+  VIX: { symbol: 'TVC:VIX', name: 'CBOE Volatility', display: 'VIX', category: 'volatility', basePrice: 16.00 }
+};
+
+const TV_SYMBOL_MAP = {
+  'OANDA:XAUUSD': 'GOLD',
+  'TVC:SILVER': 'SILVER',
+  'TVC:USOIL': 'CRUDE_OIL',
+  'TVC:PLATINUM': 'PLATINUM',
+  'TVC:DXY': 'DXY',
+  'TVC:VIX': 'VIX'
 };
 
 let cachedMarketData = null;
-let priceHistory = {
+const anchorQuotes = {};
+const priceHistory = {
   GOLD: [],
   SILVER: [],
   CRUDE_OIL: [],
@@ -26,50 +36,160 @@ let priceHistory = {
   VIX: []
 };
 
-// Seed initial historical return arrays
-function seedHistory() {
-  const points = 30;
-  for (const key of Object.keys(ASSETS)) {
-    const base = ASSETS[key].basePrice;
-    let cur = base;
-    priceHistory[key] = [];
-    for (let i = 0; i < points; i++) {
-      const delta = (Math.random() - 0.49) * 0.004 * cur;
-      cur = Math.max(0.01, cur + delta);
-      priceHistory[key].push(Number(cur.toFixed(4)));
-    }
-  }
-}
-seedHistory();
-
-// Calculate Pearson Correlation Coefficient between two series
-function calculatePearson(arr1, arr2) {
-  if (!arr1 || !arr2 || arr1.length < 5 || arr2.length < 5) return 0;
-  const n = Math.min(arr1.length, arr2.length);
-  const x = arr1.slice(-n);
-  const y = arr2.slice(-n);
-
-  const meanX = x.reduce((a, b) => a + b, 0) / n;
-  const meanY = y.reduce((a, b) => a + b, 0) / n;
-
-  let num = 0;
-  let denX = 0;
-  let denY = 0;
-
-  for (let i = 0; i < n; i++) {
-    const dx = x[i] - meanX;
-    const dy = y[i] - meanY;
-    num += dx * dy;
-    denX += dx * dx;
-    denY += dy * dy;
-  }
-
-  const denom = Math.sqrt(denX * denY);
-  if (denom === 0) return 0;
-  return Number((num / denom).toFixed(2));
+// Seed initial history
+for (const [key, def] of Object.entries(ASSETS)) {
+  const base = def.basePrice;
+  priceHistory[key] = Array(20).fill(base);
 }
 
-// Fetch single quote from Yahoo Finance v8 endpoint
+// Tick Event Listeners (SSE Broadcaster)
+const tickListeners = new Set();
+export function onMarketTick(fn) {
+  tickListeners.add(fn);
+  return () => tickListeners.delete(fn);
+}
+
+function notifyTickListeners(key, quote) {
+  for (const fn of tickListeners) {
+    try {
+      fn(key, quote);
+    } catch (e) {}
+  }
+}
+
+// -------------------------------------------------------------
+// 1. Direct TradingView Real-Time WebSocket Engine (0 Delay)
+// -------------------------------------------------------------
+let tvWebSocket = null;
+let isTvWsConnected = false;
+let tvReconnectTimer = null;
+
+function initTradingViewStream() {
+  if (typeof globalThis.WebSocket === 'undefined') return;
+
+  if (tvWebSocket) {
+    try { tvWebSocket.close(); } catch (e) {}
+  }
+
+  try {
+    const ws = new WebSocket('wss://data.tradingview.com/socket.io/websocket', {
+      headers: {
+        'Origin': 'https://www.tradingview.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const pack = (msg) => `~m~${msg.length}~m~${msg}`;
+    const send = (m, p) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(pack(JSON.stringify({ m, p })));
+      }
+    };
+
+    const sessionId = 'qs_' + Math.random().toString(36).substring(2, 10);
+
+    ws.onopen = () => {
+      isTvWsConnected = true;
+      console.log('[MarketData] Real-Time TradingView WebSocket Stream connected.');
+      send('set_auth_token', ['unauthorized_user_token']);
+      send('quote_create_session', [sessionId]);
+      send('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'high_price', 'low_price', 'open_price', 'prev_close_price', 'bid', 'ask']);
+      send('quote_add_symbols', [sessionId, ...Object.keys(TV_SYMBOL_MAP)]);
+    };
+
+    ws.onmessage = (e) => {
+      const raw = e.data;
+      if (typeof raw !== 'string') return;
+      const parts = raw.split(/~m~\d+~m~/).filter(Boolean);
+
+      for (const part of parts) {
+        if (part.startsWith('~h~')) {
+          // Heartbeat keepalive
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(pack(part));
+          }
+          continue;
+        }
+
+        try {
+          const json = JSON.parse(part);
+          if (json.m === 'qsd') {
+            const sym = json.p[1]?.n;
+            const v = json.p[1]?.v;
+            const key = TV_SYMBOL_MAP[sym];
+
+            if (key && v) {
+              const existing = anchorQuotes[key] || {};
+              const price = v.lp !== undefined ? v.lp : existing.price;
+
+              if (price !== undefined) {
+                const prevClose = v.prev_close_price !== undefined 
+                  ? v.prev_close_price 
+                  : (existing.previousClose || (price - (v.ch || 0)));
+                
+                const change = v.ch !== undefined 
+                  ? v.ch 
+                  : Number((price - prevClose).toFixed(key.includes('DXY') ? 3 : 2));
+
+                const changePercent = v.chp !== undefined 
+                  ? v.chp 
+                  : (prevClose ? Number(((change / prevClose) * 100).toFixed(2)) : 0);
+
+                const high = v.high_price !== undefined ? v.high_price : Math.max(existing.high || price, price);
+                const low = v.low_price !== undefined ? v.low_price : Math.min(existing.low || price, price);
+                const bid = v.bid !== undefined ? v.bid : (existing.bid ?? (price - 0.20));
+                const ask = v.ask !== undefined ? v.ask : (existing.ask ?? (price + 0.20));
+                const spread = (bid != null && ask != null && ask >= bid) ? Number((ask - bid).toFixed(2)) : (existing.spread ?? 0.40);
+
+                anchorQuotes[key] = {
+                  price: Number(price.toFixed(key.includes('DXY') || key.includes('HG') ? 3 : 2)),
+                  previousClose: Number(prevClose.toFixed(2)),
+                  change: Number(change.toFixed(2)),
+                  changePercent: Number(changePercent.toFixed(2)),
+                  high: Number(high.toFixed(2)),
+                  low: Number(low.toFixed(2)),
+                  bid: Number(bid.toFixed(2)),
+                  ask: Number(ask.toFixed(2)),
+                  spread,
+                  lastUpdate: Date.now()
+                };
+
+                priceHistory[key].push(price);
+                if (priceHistory[key].length > 60) priceHistory[key].shift();
+
+                notifyTickListeners(key, anchorQuotes[key]);
+              }
+            }
+          }
+        } catch (err) {}
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.warn('[MarketData] TV WebSocket error:', err?.message || 'closed');
+    };
+
+    ws.onclose = () => {
+      isTvWsConnected = false;
+      console.log('[MarketData] TV WebSocket closed. Auto-reconnecting in 2s...');
+      if (tvReconnectTimer) clearTimeout(tvReconnectTimer);
+      tvReconnectTimer = setTimeout(initTradingViewStream, 2000);
+    };
+
+    tvWebSocket = ws;
+  } catch (err) {
+    console.warn('[MarketData] Could not start TV WS:', err.message);
+    if (tvReconnectTimer) clearTimeout(tvReconnectTimer);
+    tvReconnectTimer = setTimeout(initTradingViewStream, 3000);
+  }
+}
+
+// Start TradingView real-time feed immediately
+initTradingViewStream();
+
+// -------------------------------------------------------------
+// 2. HTTP Scanner & Yahoo Fallback Engine
+// -------------------------------------------------------------
 async function fetchYahooQuote(symbol) {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=2m&range=1d`;
@@ -78,9 +198,7 @@ async function fetchYahooQuote(symbol) {
 
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
     });
     clearTimeout(timeout);
 
@@ -112,7 +230,6 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
-// Batch fetch real-time quotes directly from TradingView Scanner API (OANDA / TVC feeds)
 async function fetchTradingViewQuotes(symbols) {
   if (!symbols || symbols.length === 0) return {};
   try {
@@ -149,7 +266,7 @@ async function fetchTradingViewQuotes(symbols) {
         const low = d[4] || close;
         const bid = d[5];
         const ask = d[6];
-        const spread = (bid != null && ask != null && ask >= bid) ? Number((ask - bid).toFixed(2)) : null;
+        const spread = (bid != null && ask != null && ask >= bid) ? Number((ask - bid).toFixed(2)) : 0.40;
 
         result[s] = {
           price: Number(close.toFixed(s.includes('DXY') || s.includes('HG') ? 3 : 2)),
@@ -158,6 +275,8 @@ async function fetchTradingViewQuotes(symbols) {
           changePercent: Number(changePercent.toFixed(2)),
           high: Number(high.toFixed(2)),
           low: Number(low.toFixed(2)),
+          bid: Number((bid || close - 0.20).toFixed(2)),
+          ask: Number((ask || close + 0.20).toFixed(2)),
           spread,
           quotes: [low, close, high]
         };
@@ -169,106 +288,62 @@ async function fetchTradingViewQuotes(symbols) {
   }
 }
 
-// Fallback synthetic micro-tick engine if APIs rate limit or are unreachable
-function generateMicroTick(key) {
-  const asset = ASSETS[key];
-  const lastPrice = priceHistory[key][priceHistory[key].length - 1] || asset.basePrice;
-  const driftFactor = (Math.random() - 0.495) * 0.0015;
-  const newPrice = Number((lastPrice * (1 + driftFactor)).toFixed(key === 'COPPER' || key.includes('Y') ? 3 : 2));
+// Calculate Pearson Correlation Coefficient
+function calculatePearson(arr1, arr2) {
+  if (!arr1 || !arr2 || arr1.length < 5 || arr2.length < 5) return 0;
+  const n = Math.min(arr1.length, arr2.length);
+  const x = arr1.slice(-n);
+  const y = arr2.slice(-n);
 
-  priceHistory[key].push(newPrice);
-  if (priceHistory[key].length > 60) priceHistory[key].shift();
+  const meanX = x.reduce((a, b) => a + b, 0) / n;
+  const meanY = y.reduce((a, b) => a + b, 0) / n;
 
-  const prevClose = asset.basePrice;
-  const change = newPrice - prevClose;
-  const changePercent = (change / prevClose) * 100;
+  let num = 0;
+  let denX = 0;
+  let denY = 0;
 
-  return {
-    price: newPrice,
-    previousClose: prevClose,
-    change: Number(change.toFixed(2)),
-    changePercent: Number(changePercent.toFixed(2)),
-    high: Number((Math.max(...priceHistory[key])).toFixed(2)),
-    low: Number((Math.min(...priceHistory[key])).toFixed(2)),
-    quotes: priceHistory[key]
-  };
+  for (let i = 0; i < n; i++) {
+    const dx = x[i] - meanX;
+    const dy = y[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
+  }
+
+  const denom = Math.sqrt(denX * denY);
+  if (denom === 0) return 0;
+  return Number((num / denom).toFixed(2));
 }
 
-let lastTvFetch = 0;
+let lastFallbackScan = 0;
 let lastYahooFetch = 0;
-let isFetchingTv = false;
-let isFetchingYahoo = false;
-const anchorQuotes = {};
 
 export async function getMarketData() {
   const now = Date.now();
-  const shouldRefreshTv = (now - lastTvFetch) > 1000; // Refresh TV quotes every 1.0s in background
-  const shouldRefreshYahoo = (now - lastYahooFetch) > 15000; // Refresh Yahoo yields/crude every 15s
 
-  const tvTickers = [];
-  const yahooTickers = [];
-
-  for (const [key, def] of Object.entries(ASSETS)) {
-    if (def.symbol.includes(':')) {
-      tvTickers.push({ key, symbol: def.symbol });
-    } else {
-      yahooTickers.push({ key, symbol: def.symbol });
-    }
+  // Background refresh for Yahoo yields & copper every 20s
+  if ((now - lastYahooFetch) > 20000) {
+    lastYahooFetch = now;
+    Promise.all([
+      fetchYahooQuote('^TNX').then(q => { if (q) anchorQuotes.US10Y = q; }),
+      fetchYahooQuote('^IRX').then(q => { if (q) anchorQuotes.US02Y = q; }),
+      fetchYahooQuote('HG=F').then(q => { if (q) anchorQuotes.COPPER = q; }),
+      fetchYahooQuote('CL=F').then(q => { if (q && !anchorQuotes.CRUDE_OIL) anchorQuotes.CRUDE_OIL = q; })
+    ]).catch(() => {});
   }
 
-  // 1. Initial boot fetch: await once so the server starts with genuine quotes
-  if (!anchorQuotes.GOLD) {
-    lastTvFetch = now;
-    const tvQuotes = await fetchTradingViewQuotes(tvTickers.map(t => t.symbol));
-    for (const item of tvTickers) {
-      if (tvQuotes[item.symbol]) {
-        anchorQuotes[item.key] = tvQuotes[item.symbol];
-      }
-    }
-    // Also fetch initial Yahoo quotes
-    lastYahooFetch = now;
-    await Promise.all(
-      yahooTickers.map(async (item) => {
-        const quote = await fetchYahooQuote(item.symbol);
-        if (quote) {
-          anchorQuotes[item.key] = quote;
+  // If WebSocket hasn't delivered quotes yet or on cold boot, run REST scan fallback
+  if (!anchorQuotes.GOLD || (now - lastFallbackScan) > 30000) {
+    lastFallbackScan = now;
+    const tvTickers = Object.values(ASSETS).filter(a => a.symbol.includes(':')).map(a => a.symbol);
+    fetchTradingViewQuotes(tvTickers).then(tvQuotes => {
+      for (const [sym, quote] of Object.entries(tvQuotes)) {
+        const key = TV_SYMBOL_MAP[sym];
+        if (key && !anchorQuotes[key]) {
+          anchorQuotes[key] = quote;
         }
-      })
-    );
-  } else {
-    // Zero-delay continuous non-blocking background refresh every 1000ms
-    if (shouldRefreshTv && !isFetchingTv) {
-      isFetchingTv = true;
-      lastTvFetch = now;
-      fetchTradingViewQuotes(tvTickers.map(t => t.symbol))
-        .then(tvQuotes => {
-          for (const item of tvTickers) {
-            if (tvQuotes[item.symbol]) {
-              anchorQuotes[item.key] = tvQuotes[item.symbol];
-            }
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          isFetchingTv = false;
-        });
-    }
-
-    // Zero-delay background refresh for Yahoo macro yields
-    if (shouldRefreshYahoo && !isFetchingYahoo) {
-      isFetchingYahoo = true;
-      lastYahooFetch = now;
-      Promise.all(
-        yahooTickers.map(async (item) => {
-          const quote = await fetchYahooQuote(item.symbol);
-          if (quote) {
-            anchorQuotes[item.key] = quote;
-          }
-        })
-      ).catch(() => {}).finally(() => {
-        isFetchingYahoo = false;
-      });
-    }
+      }
+    }).catch(() => {});
   }
 
   const results = {};
@@ -276,10 +351,6 @@ export async function getMarketData() {
     let quote = anchorQuotes[key];
 
     if (quote) {
-      const price = quote.price;
-      priceHistory[key].push(price);
-      if (priceHistory[key].length > 60) priceHistory[key].shift();
-
       results[key] = {
         id: key,
         symbol: def.symbol,
@@ -287,49 +358,53 @@ export async function getMarketData() {
         name: def.name,
         category: def.category,
         price: quote.price,
+        previousClose: quote.previousClose,
         change: quote.change,
         changePercent: quote.changePercent,
         high: quote.high,
         low: quote.low,
+        bid: quote.bid,
+        ask: quote.ask,
         spread: quote.spread,
         history: priceHistory[key].slice(-15),
         momentum: quote.changePercent > 0.4 ? 'STRONG_UP' : quote.changePercent > 0.05 ? 'UP' : quote.changePercent < -0.4 ? 'STRONG_DOWN' : quote.changePercent < -0.05 ? 'DOWN' : 'NEUTRAL'
       };
     } else {
-      const micro = generateMicroTick(key);
+      const base = def.basePrice;
       results[key] = {
         id: key,
         symbol: def.symbol,
         display: def.display,
         name: def.name,
         category: def.category,
-        price: micro.price,
-        change: micro.change,
-        changePercent: micro.changePercent,
-        high: micro.high,
-        low: micro.low,
-        spread: 0.30,
+        price: base,
+        previousClose: base,
+        change: 0.00,
+        changePercent: 0.00,
+        high: base * 1.002,
+        low: base * 0.998,
+        bid: base - 0.20,
+        ask: base + 0.20,
+        spread: 0.40,
         history: priceHistory[key].slice(-15),
-        momentum: micro.changePercent > 0.4 ? 'STRONG_UP' : micro.changePercent > 0.05 ? 'UP' : micro.changePercent < -0.4 ? 'STRONG_DOWN' : micro.changePercent < -0.05 ? 'DOWN' : 'NEUTRAL'
+        momentum: 'NEUTRAL'
       };
     }
   }
 
-  // Compute Special Macro Metrics
+  // Macro Metrics
   const goldPrice = results.GOLD.price;
   const silverPrice = results.SILVER.price;
-  const gsr = silverPrice > 0 ? Number((goldPrice / silverPrice).toFixed(2)) : 68.0;
+  const gsr = silverPrice > 0 ? Number((goldPrice / silverPrice).toFixed(2)) : 67.4;
 
-  // Real Yield = Nominal 10Y - 5Y5Y forward breakeven inflation proxy (~2.25%)
   const nominal10Y = results.US10Y.price;
   const estimatedBreakeven = 2.25;
   const realYield10Y = Number((nominal10Y - estimatedBreakeven).toFixed(2));
 
-  // Yield Curve 10Y-2Y Spread
   const yield2Y = results.US02Y.price;
   const yieldCurveSpread = Number((nominal10Y - yield2Y).toFixed(2));
 
-  // Calculate Rolling Correlations against Gold
+  // Rolling Correlations
   const goldReturns = priceHistory.GOLD;
   for (const key of Object.keys(results)) {
     if (key === 'GOLD') {
@@ -339,10 +414,9 @@ export async function getMarketData() {
     }
   }
 
-  // Calculate Gold Spread: use real OANDA spread if available, else standard institutional spread
-  const spread = results.GOLD.spread != null ? results.GOLD.spread : Number((0.20 + (Math.random() * 0.10)).toFixed(2));
+  const spread = results.GOLD.spread != null ? results.GOLD.spread : 0.40;
 
-  // Determine current active trading session
+  // Active trading session
   const currentDate = new Date();
   const utcHour = currentDate.getUTCHours();
   let session = 'ASIAN';

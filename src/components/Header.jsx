@@ -13,8 +13,8 @@ export default function Header({
   onToggleVoice,
   onOpenSettings
 }) {
-  const gold = marketData?.goldSpot || { price: 4335.00, change: 0, changePercent: 0, high: 4350, low: 4310 };
-  const isUp = gold.change >= 0;
+  const gold = marketData?.goldSpot || { price: 4380.00, change: 0, changePercent: 0, high: 4385, low: 4320 };
+  const isUp = (gold.changePercent !== undefined && gold.changePercent !== 0 ? gold.changePercent : (gold.change || 0)) >= 0;
   const session = marketData?.session || 'ASIAN';
 
   const prevPriceRef = React.useRef(gold.price);
@@ -65,33 +65,53 @@ export default function Header({
           <div className="h-7 w-[1px] bg-white/10 hidden sm:block"></div>
 
           {/* Primary Gold Price Display with Real-Time Tick Flash */}
-          <div className="flex items-baseline gap-2.5">
-            <div className={`px-2 py-0.5 rounded transition-colors duration-300 ${
-              flash === 'up' ? 'bg-emerald-500/20 text-emerald-300' :
-              flash === 'down' ? 'bg-rose-500/20 text-rose-300' :
-              'bg-transparent text-white'
+          <div className="flex items-center gap-2.5">
+            <div className={`px-2.5 py-1 rounded-lg border transition-all duration-200 ${
+              flash === 'up' 
+                ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300 shadow-md shadow-emerald-500/30 scale-[1.02]' :
+              flash === 'down' 
+                ? 'bg-rose-500/25 border-rose-400 text-rose-300 shadow-md shadow-rose-500/30 scale-[1.02]' :
+              'bg-slate-900/80 border-white/10 text-white'
             }`}>
-              <span className="text-xl sm:text-2xl font-mono font-bold tracking-tight tabular-nums">
-                ${gold.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xl sm:text-2xl font-mono font-extrabold tracking-tight tabular-nums">
+                  ${gold.price ? Number(gold.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '---'}
+                </span>
+                <span className={`inline-block w-2 h-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} title="Live WebSocket Tick Stream" />
+              </div>
             </div>
-            <div className={`flex items-center text-xs font-mono font-semibold px-1.5 py-0.5 rounded ${
-              isUp ? 'text-emerald-400 bg-emerald-950/50' : 'text-rose-400 bg-rose-950/50'
-            }`}>
-              {isUp ? <TrendingUp className="w-3 h-3 mr-0.5 inline" /> : <TrendingDown className="w-3 h-3 mr-0.5 inline" />}
-              {isUp ? '+' : ''}{gold.change?.toFixed(2)} ({isUp ? '+' : ''}{gold.changePercent?.toFixed(2)}%)
+
+            {/* Prominent Real-Time Percentage & Dollar Change Badges */}
+            <div className="flex items-center gap-1.5">
+              {/* Dollar Change */}
+              <div className={`flex items-center text-xs font-mono font-bold px-2 py-1 rounded border ${
+                isUp ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60' : 'text-rose-400 bg-rose-950/60 border-rose-800/60'
+              }`}>
+                {isUp ? <TrendingUp className="w-3.5 h-3.5 mr-1 inline shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 mr-1 inline shrink-0" />}
+                <span className="tabular-nums">{isUp ? '+' : ''}{Number(gold.change || 0).toFixed(2)}</span>
+              </div>
+
+              {/* High-Contrast Percentage Change Badge */}
+              <div className={`flex items-center text-xs font-mono font-extrabold px-2 py-1 rounded border ${
+                isUp 
+                  ? 'text-emerald-300 bg-emerald-900/80 border-emerald-500/60 shadow-sm shadow-emerald-500/20' 
+                  : 'text-rose-300 bg-rose-900/80 border-rose-500/60 shadow-sm shadow-rose-500/20'
+              }`} title="24-Hour Net Percentage Change">
+                <span className="tabular-nums">{isUp ? '+' : ''}{Number(gold.changePercent || 0).toFixed(2)}%</span>
+              </div>
             </div>
-            <div className="hidden xl:flex items-center gap-3 text-[11px] text-slate-400 font-mono">
-              <span>H: <strong className="text-slate-200">${gold.high?.toFixed(2)}</strong></span>
-              <span>L: <strong className="text-slate-200">${gold.low?.toFixed(2)}</strong></span>
-              <span>Bid: <strong className="text-slate-200">${((gold.price || 4335) - ((marketData?.spread || 0.50) / 2)).toFixed(2)}</strong></span>
-              <span>Ask: <strong className="text-slate-200">${((gold.price || 4335) + ((marketData?.spread || 0.50) / 2)).toFixed(2)}</strong></span>
-              <span>Spread: <strong className="text-gold-400">${(marketData?.spread || 0.50).toFixed(2)}</strong></span>
+
+            {/* High/Low/Bid/Ask/Spread */}
+            <div className="hidden xl:flex items-center gap-3 text-[11px] text-slate-400 font-mono pl-1 border-l border-white/10">
+              <span>H: <strong className="text-slate-200">${Number(gold.high || gold.price || 0).toFixed(2)}</strong></span>
+              <span>L: <strong className="text-slate-200">${Number(gold.low || gold.price || 0).toFixed(2)}</strong></span>
+              <span>Bid: <strong className="text-slate-200">${Number(gold.bid || ((gold.price || 4380) - 0.20)).toFixed(2)}</strong></span>
+              <span>Ask: <strong className="text-slate-200">${Number(gold.ask || ((gold.price || 4380) + 0.20)).toFixed(2)}</strong></span>
+              <span>Spread: <strong className="text-gold-400">${Number(marketData?.spread || gold.spread || 0.40).toFixed(2)}</strong></span>
             </div>
             <div className="flex xl:hidden items-center gap-2 text-[11px] text-slate-400 font-mono">
-              <span>H: <strong className="text-slate-200">${gold.high?.toFixed(2)}</strong></span>
-              <span>L: <strong className="text-slate-200">${gold.low?.toFixed(2)}</strong></span>
-              <span>Spread: <strong className="text-gold-400">${(marketData?.spread || 0.50).toFixed(2)}</strong></span>
+              <span>H: <strong className="text-slate-200">${Number(gold.high || gold.price || 0).toFixed(2)}</strong></span>
+              <span>L: <strong className="text-slate-200">${Number(gold.low || gold.price || 0).toFixed(2)}</strong></span>
             </div>
           </div>
         </div>

@@ -95,7 +95,7 @@ export default function MacroDriversGrid({ marketData }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {cards.map((card) => {
           const item = card.data || { price: 0, change: 0, changePercent: 0, correlation: 0, momentum: 'NEUTRAL' };
-          const isUp = item.change >= 0;
+          const isUp = (item.changePercent !== undefined && item.changePercent !== 0 ? item.changePercent : (item.change || 0)) >= 0;
           const corr = item.correlation ?? 0;
           // Correlation percentage (-1 to +1 -> 0% to 100% position)
           const corrPct = Math.round(((corr + 1) / 2) * 100);
@@ -131,13 +131,13 @@ export default function MacroDriversGrid({ marketData }) {
                 {/* Price & Change */}
                 <div className="flex items-baseline justify-between mt-2.5">
                   <span className="text-base font-mono font-bold text-white tabular-nums">
-                    {card.suffix ? `${item.price?.toFixed(2)}%` : `$${item.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    {card.suffix ? `${Number(item.price || 0).toFixed(2)}%` : `$${Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   </span>
-                  <div className={`flex items-center text-xs font-mono font-semibold ${
-                    isUp ? 'text-emerald-400' : 'text-rose-400'
+                  <div className={`flex items-center text-xs font-mono font-bold px-1.5 py-0.5 rounded border ${
+                    isUp ? 'text-emerald-400 bg-emerald-950/50 border-emerald-800/40' : 'text-rose-400 bg-rose-950/50 border-rose-800/40'
                   }`}>
-                    {isUp ? <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />}
-                    <span>{isUp ? '+' : ''}{item.changePercent?.toFixed(2)}%</span>
+                    {isUp ? <ArrowUpRight className="w-3.5 h-3.5 mr-0.5 shrink-0" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-0.5 shrink-0" />}
+                    <span className="tabular-nums">{isUp ? '+' : ''}{Number(item.changePercent || 0).toFixed(2)}%</span>
                   </div>
                 </div>
 
