@@ -117,7 +117,16 @@ export default function App() {
       }
     }, 2000);
 
+    // Instant sync when trader switches back to this tab
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadInitialData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (eventSource) eventSource.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       clearInterval(pollInterval);

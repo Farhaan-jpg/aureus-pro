@@ -78,10 +78,17 @@ export default function Header({
               {isUp ? <TrendingUp className="w-3 h-3 mr-0.5 inline" /> : <TrendingDown className="w-3 h-3 mr-0.5 inline" />}
               {isUp ? '+' : ''}{gold.change?.toFixed(2)} ({isUp ? '+' : ''}{gold.changePercent?.toFixed(2)}%)
             </div>
-            <div className="hidden lg:flex items-center gap-3 text-[11px] text-slate-400 font-mono">
+            <div className="hidden xl:flex items-center gap-3 text-[11px] text-slate-400 font-mono">
               <span>H: <strong className="text-slate-200">${gold.high?.toFixed(2)}</strong></span>
               <span>L: <strong className="text-slate-200">${gold.low?.toFixed(2)}</strong></span>
-              <span>Spread: <strong className="text-gold-400">${marketData?.spread || '0.22'}</strong></span>
+              <span>Bid: <strong className="text-slate-200">${((gold.price || 4335) - ((marketData?.spread || 0.50) / 2)).toFixed(2)}</strong></span>
+              <span>Ask: <strong className="text-slate-200">${((gold.price || 4335) + ((marketData?.spread || 0.50) / 2)).toFixed(2)}</strong></span>
+              <span>Spread: <strong className="text-gold-400">${(marketData?.spread || 0.50).toFixed(2)}</strong></span>
+            </div>
+            <div className="flex xl:hidden items-center gap-2 text-[11px] text-slate-400 font-mono">
+              <span>H: <strong className="text-slate-200">${gold.high?.toFixed(2)}</strong></span>
+              <span>L: <strong className="text-slate-200">${gold.low?.toFixed(2)}</strong></span>
+              <span>Spread: <strong className="text-gold-400">${(marketData?.spread || 0.50).toFixed(2)}</strong></span>
             </div>
           </div>
         </div>

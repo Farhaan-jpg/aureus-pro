@@ -40,6 +40,11 @@ export default function EconomicCalendar({ calendarData }) {
     CAD: 'text-purple-400 bg-purple-950/60 border-purple-700/50'
   };
 
+  const imminentEvent = upcomingEvents.find(e => {
+    const diff = new Date(e.date).getTime() - now;
+    return diff > 0 && diff <= 300000 && (e.impact === 'HIGH' || e.impact === 'CRITICAL' || e.currency === 'USD');
+  });
+
   return (
     <div className="hud-panel p-4 flex flex-col justify-between h-full">
       {/* Header */}
@@ -47,7 +52,7 @@ export default function EconomicCalendar({ calendarData }) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 mb-2.5 border-b border-white/5 gap-2">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gold-400" />
-            <h2 className="font-mono font-bold text-xs tracking-wider text-slate-200 uppercase flex items-center gap-1.5">
+            <h2 className="font-mono font-bold text-xs tracking-wider text-slate-200 uppercase flex items-center gap-1.5 flex-wrap">
               <span>Module F: Economic Calendar & Gold Impact Matrix</span>
               <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 FOREX FACTORY LIVE
@@ -93,6 +98,26 @@ export default function EconomicCalendar({ calendarData }) {
             </button>
           </div>
         </div>
+
+        {/* Imminent Event High Alert */}
+        {imminentEvent && (
+          <div className="bg-rose-950/90 border-2 border-rose-500 p-2.5 rounded mb-2.5 flex items-center justify-between text-xs font-mono animate-pulse shadow-lg shadow-rose-950/60">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+              <div>
+                <span className="font-extrabold text-rose-200 uppercase tracking-wide block">
+                  RED FOLDER EVENT IMMINENT: {imminentEvent.title} ({imminentEvent.currency})
+                </span>
+                <span className="text-[10px] text-rose-300">
+                  Due in {formatCountdown(imminentEvent.date)} — Severe liquidity sweeps imminent. Flatten 5M scalps!
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-extrabold text-[10px] shrink-0">
+              ACTION REQUIRED
+            </span>
+          </div>
+        )}
 
         {/* Tab 1 & 2: Events List */}
         {activeTab !== 'MATRIX' && (

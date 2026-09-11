@@ -189,6 +189,8 @@ async function callOpenRouter(promptText) {
 }
 
 let cachedAnalysis = null;
+let geminiCooldownUntil = 0;
+let openRouterCooldownUntil = 0;
 
 // Multi-LLM Orchestrator with 3-tier Failover
 export async function generateFloorAnalysis(marketData, newsList = [], biasScore = 0) {
@@ -215,25 +217,37 @@ ${headlines || "No major breaking macro news in the last 60 minutes."}
 Analyze the market tape as the 10+ year veteran floor trader and produce the required JSON analysis.
 `;
 
-  // Tier 1: Gemini
-  try {
-    const analysis = await callGemini(promptText);
-    cachedAnalysis = analysis;
-    return analysis;
-  } catch (geminiError) {
-    console.warn(`[AI Engine] Gemini Primary failed: ${geminiError.message}. Initiating Tier 2 Failover (OpenRouter)...`);
+  const now = Date.now();
+
+  // Tier 1: Gemini (if not in quota cooldown)
+  if (now > geminiCooldownUntil) {
+    try {
+      const analysis = await callGemini(promptText);
+      cachedAnalysis = analysis;
+      return analysis;
+    } catch (geminiError) {
+      if (geminiError.message?.includes('429') || geminiError.message?.includes('quota')) {
+        geminiCooldownUntil = now + 5 * 60 * 1000; // 5 min cooldown on quota
+      }
+      console.warn(`[AI Engine] Gemini Primary bypassed: ${geminiError.message}. Initiating Tier 2 Failover...`);
+    }
   }
 
-  // Tier 2: OpenRouter Free Models
-  try {
-    const analysis = await callOpenRouter(promptText);
-    cachedAnalysis = analysis;
-    return analysis;
-  } catch (openRouterError) {
-    console.warn(`[AI Engine] OpenRouter Fallback failed: ${openRouterError.message}. Initiating Tier 3 Failover (Deterministic Engine)...`);
+  // Tier 2: OpenRouter Free Models (if not in quota cooldown)
+  if (now > openRouterCooldownUntil) {
+    try {
+      const analysis = await callOpenRouter(promptText);
+      cachedAnalysis = analysis;
+      return analysis;
+    } catch (openRouterError) {
+      if (openRouterError.message?.includes('429') || openRouterError.message?.includes('Rate limit')) {
+        openRouterCooldownUntil = now + 5 * 60 * 1000;
+      }
+      console.warn(`[AI Engine] OpenRouter Fallback bypassed: ${openRouterError.message}. Initiating Tier 3 Failover...`);
+    }
   }
 
-  // Tier 3: Deterministic Rule-Based Institutional Gold Floor Engine
+  // Tier 3: Deterministic Rule-Based Institutional Gold Floor Engine (Zero Latency)
   const analysis = generateDeterministicAnalysis(marketData, newsList, biasScore);
   cachedAnalysis = analysis;
   return analysis;
