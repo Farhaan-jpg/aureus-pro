@@ -30,7 +30,9 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   const yieldCurve = marketData.yieldCurveSpread;
   const dxyFactor = dxyChange != null ? -dxyChange * 45 : 0;
   const realYieldFactor = realYield != null ? (1.5 - realYield) * 28 : 0;
-  const curveFactor = yieldCurve == null ? 0 : yieldCurve > 0 ? 8 : -12;
+  // Inverted curve (10Y < 2Y) = recession signal -> gold safe-haven BULLISH.
+  // Steep positive curve on growth = mild headwind for gold.
+  const curveFactor = yieldCurve == null ? 0 : yieldCurve < 0 ? 12 : yieldCurve > 0.5 ? -6 : 0;
   const macroSubScore = clamp(dxyFactor + realYieldFactor + curveFactor);
 
   const silverChange = assets.SILVER?.changePercent;

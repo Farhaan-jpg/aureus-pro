@@ -3,7 +3,6 @@ import Header from './components/Header';
 import TradingViewChart from './components/TradingViewChart';
 import MacroDriversGrid from './components/MacroDriversGrid';
 import CompositeBiasMeter from './components/CompositeBiasMeter';
-import FloorStrategist from './components/FloorStrategist';
 import NewsSentimentFeed from './components/NewsSentimentFeed';
 import OrderBookSentiment from './components/OrderBookSentiment';
 import EconomicCalendar from './components/EconomicCalendar';
@@ -30,7 +29,6 @@ export default function App() {
   const [news, setNews] = useState([]);
   const [bias, setBias] = useState(null);
   const [retail, setRetail] = useState(null);
-  const [commentary, setCommentary] = useState(null);
   const [calendar, setCalendar] = useState(null);
   const [timeframes, setTimeframes] = useState(null);
   const [geo, setGeo] = useState(null);
@@ -38,7 +36,6 @@ export default function App() {
 
   const [isLive, setIsLive] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isAiGenerating, setIsAiGenerating] = useState(false);
 
   // Settings & Voice Controls
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -57,42 +54,36 @@ export default function App() {
     setVoiceConfig({ ...updated });
   }, [voiceConfig.enabled]);
 
-  // Initial Fetch of all dashboard data
-  const loadInitialData = useCallback(async () => {
-    try {
-      const [marketRes, newsRes, biasRes, retailRes, commRes, calRes, geoRes, etfRes, tfRes] = await Promise.all([
-        fetch('/api/market-data').then(r => r.json()),
-        fetch('/api/news').then(r => r.json()),
-        fetch('/api/composite-bias').then(r => r.json()),
-        fetch('/api/orderbook-sentiment').then(r => r.json()),
-        fetch('/api/strategist').then(r => r.json()),
-        fetch('/api/economic-calendar').then(r => r.json()),
-        fetch('/api/geo-risk').then(r => r.json()),
-        fetch('/api/etf-flows').then(r => r.json()),
-        fetch('/api/timeframes').then(r => r.json())
-      ]);
-
-      if (marketRes) setMarketData(marketRes);
-      if (newsRes?.news) {
-        setNews(newsRes.news);
-        if (!lastSpokenNewsIdRef.current && newsRes.news[0]?.title) {
-          lastSpokenNewsIdRef.current = newsRes.news[0].title;
+  // Initial Fetch of all dashboard data — non-blocking: each feed paints the
+  // moment it arrives instead of waiting for the slowest endpoint (GDELT/ETF).
+  const loadInitialData = useCallback(() => {
+    const endpoints = [
+      ['market-data', (d) => { if (d?.goldSpot) setMarketData(d); }],
+      ['news', (d) => {
+        if (d?.news) {
+          setNews(d.news);
+          if (!lastSpokenNewsIdRef.current && d.news[0]?.title) {
+            lastSpokenNewsIdRef.current = d.news[0].title;
+          }
         }
-      }
-      if (biasRes) {
-        setBias(biasRes);
-        if (!lastBiasRef.current && biasRes.label) {
-          lastBiasRef.current = biasRes.label;
+      }],
+      ['composite-bias', (d) => {
+        if (d) {
+          setBias(d);
+          if (!lastBiasRef.current && d.label) lastBiasRef.current = d.label;
         }
-      }
-      if (retailRes) setRetail(retailRes);
-      if (commRes) setCommentary(commRes);
-      if (calRes) setCalendar(calRes);
-      if (geoRes) setGeo(geoRes);
-      if (etfRes) setEtf(etfRes);
-      if (tfRes) setTimeframes(tfRes);
-    } catch (err) {
-      console.error('Error fetching initial terminal data:', err);
+      }],
+      ['orderbook-sentiment', (d) => { if (d) setRetail(d); }],
+      ['economic-calendar', (d) => { if (d) setCalendar(d); }],
+      ['geo-risk', (d) => { if (d) setGeo(d); }],
+      ['etf-flows', (d) => { if (d) setEtf(d); }],
+      ['timeframes', (d) => { if (d) setTimeframes(d); }]
+    ];
+    for (const [path, apply] of endpoints) {
+      fetch(`/api/${path}`)
+        .then((r) => r.json())
+        .then(apply)
+        .catch((err) => console.error(`Error fetching /api/${path}:`, err));
     }
   }, []);
 
@@ -172,13 +163,6 @@ export default function App() {
         } catch (err) {}
       });
 
-      eventSource.addEventListener('STRATEGIST_UPDATE', (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.commentary) setCommentary(data.commentary);
-        } catch (err) {}
-      });
-
       eventSource.addEventListener('FULL_SYNC', (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -186,7 +170,6 @@ export default function App() {
           if (data.news) setNews(data.news);
           if (data.bias) setBias(data.bias);
           if (data.retail) setRetail(data.retail);
-          if (data.commentary) setCommentary(data.commentary);
           if (data.timeframes) setTimeframes(data.timeframes);
           if (data.geo) setGeo(data.geo);
           if (data.etf) setEtf(data.etf);
@@ -316,20 +299,6 @@ export default function App() {
     }
   };
 
-  // Manual Trigger: Force fresh AI Floor Strategist commentary
-  const handleGenerateAI = async () => {
-    setIsAiGenerating(true);
-    try {
-      const res = await fetch('/api/strategist/generate', { method: 'POST' });
-      const data = await res.json();
-      if (data) setCommentary(data);
-    } catch (err) {
-      console.error('AI Generation failed:', err);
-    } finally {
-      setIsAiGenerating(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#07080b] text-slate-100 flex flex-col selection:bg-gold-500 selection:text-black">
       {/* Institutional Navigation & Real-Time Header */}
@@ -339,8 +308,6 @@ export default function App() {
         isLive={isLive}
         isRefreshing={isRefreshing}
         onRefresh={handleManualRefresh}
-        onGenerateAI={handleGenerateAI}
-        isAiGenerating={isAiGenerating}
         voiceEnabled={voiceConfig.enabled}
         onToggleVoice={handleToggleVoice}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -359,20 +326,13 @@ export default function App() {
           />
         </div>
 
-        {/* Row 1: Primary Advanced Chart + Floor Strategist AI Commentary */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Module E: TradingView Live Chart (7 cols) */}
-          <div className="lg:col-span-7">
+        {/* Row 1: Primary Advanced Chart (8 cols) + Composite Market Bias (4 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+          <div className="lg:col-span-8 flex flex-col h-full">
             <TradingViewChart marketData={marketData} />
           </div>
-
-          {/* Modules C & D: The Floor Strategist AI Engine (5 cols) */}
-          <div className="lg:col-span-5">
-            <FloorStrategist
-              commentary={commentary}
-              onGenerateAI={handleGenerateAI}
-              isAiGenerating={isAiGenerating}
-            />
+          <div className="lg:col-span-4 flex flex-col h-full">
+            <CompositeBiasMeter bias={bias} />
           </div>
         </div>
 
@@ -381,30 +341,8 @@ export default function App() {
           <MacroDriversGrid marketData={marketData} />
         </div>
 
-        {/* Row 2b: Feed Health Monitor + Gold Seasonality Strip */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-stretch">
-          <div className="lg:col-span-7 flex flex-col h-full">
-            <DataHealthMonitor
-              marketData={marketData}
-              geo={geo}
-              etf={etf}
-              timeframes={timeframes}
-              calendar={calendar}
-              news={news}
-            />
-          </div>
-          <div className="lg:col-span-5 flex flex-col h-full">
-            <SeasonalityPanel />
-          </div>
-        </div>
-
         {/* Row 3: Institutional Sentiment & Session Execution Grid (3 cols) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {/* Module H: Composite Market Bias & Strength Meter */}
-          <div className="flex flex-col h-full">
-            <CompositeBiasMeter bias={bias} />
-          </div>
-
           {/* Module G: Order Book Depth & Retail Sentiment Tracker */}
           <div className="flex flex-col h-full">
             <OrderBookSentiment
@@ -420,27 +358,39 @@ export default function App() {
               marketData={marketData}
             />
           </div>
+
+          {/* Feed Health Monitor */}
+          <div className="flex flex-col h-full">
+            <DataHealthMonitor
+              marketData={marketData}
+              geo={geo}
+              etf={etf}
+              timeframes={timeframes}
+              calendar={calendar}
+              news={news}
+            />
+          </div>
         </div>
 
-        {/* Row 4: Macro Positioning & Fundamental Catalysts (2 cols) */}
+        {/* Row 4: Fundamental Catalysts - Economic Calendar (7 cols) + CFTC COT (5 cols) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-          {/* CFTC Gold (COMEX) COT Report Gauge (5 cols) */}
-          <div className="lg:col-span-5 flex flex-col h-full">
-            <CotReportGauge />
-          </div>
-
-          {/* Module F: Real-Time Economic Calendar & Gold Impact Matrix (7 cols) */}
           <div className="lg:col-span-7 flex flex-col h-full">
             <EconomicCalendar calendarData={calendar} />
           </div>
+          <div className="lg:col-span-5 flex flex-col h-full">
+            <CotReportGauge />
+          </div>
         </div>
 
-        {/* Row 4b: Geopolitical Risk Heat + Gold ETF Tape (2 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-          <div className="lg:col-span-6 flex flex-col h-full">
+        {/* Row 4b: Seasonal Strip + Geopolitical Risk Heat + Gold ETF Tape (3 cols) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="flex flex-col h-full">
+            <SeasonalityPanel />
+          </div>
+          <div className="flex flex-col h-full">
             <GeoRiskPanel geo={geo} />
           </div>
-          <div className="lg:col-span-6 flex flex-col h-full">
+          <div className="flex flex-col h-full">
             <GoldEtfPanel etf={etf} />
           </div>
         </div>

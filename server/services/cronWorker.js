@@ -3,7 +3,6 @@ import { aggregateAllNews, getCachedNews } from './rssNews.js';
 import { classifyAllNews } from './sentimentEngine.js';
 import { getRetailSentiment } from './retailSentiment.js';
 import { calculateCompositeBias } from './compositeBias.js';
-import { generateFloorAnalysis } from './aiStrategist.js';
 import { broadcastToAll } from '../routes/sse.js';
 import { getEconomicCalendar } from './economicCalendar.js';
 import {
@@ -119,19 +118,6 @@ export function startBackgroundWorker() {
       const classifiedNews = classifyAllNews(getCachedNews());
       const retail = getRetailSentiment(marketData.goldSpot.price);
       const bias = currentBias(marketData, classifiedNews, retail);
-      const commentary = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
-      broadcastToAll('STRATEGIST_UPDATE', { commentary });
-    } catch (err) {
-      console.error('[Worker AI Loop Error]:', err.message);
-    }
-  }, config.aiRefreshMs);
-
-  setInterval(async () => {
-    try {
-      const marketData = await getMarketData();
-      const classifiedNews = classifyAllNews(getCachedNews());
-      const retail = getRetailSentiment(marketData.goldSpot.price);
-      const bias = currentBias(marketData, classifiedNews, retail);
       await checkTelegramTriggers(marketData, bias, retail);
     } catch (e) {}
   }, 30000);
@@ -187,7 +173,6 @@ export async function refreshAndBroadcast() {
     const classifiedNews = classifyAllNews(rawNews);
     const retail = getRetailSentiment(marketData.goldSpot.price);
     const bias = currentBias(marketData, classifiedNews, retail);
-    const commentary = await generateFloorAnalysis(marketData, classifiedNews, bias.score);
     checkTelegramTriggers(marketData, bias, retail);
 
     const payload = {
@@ -195,7 +180,6 @@ export async function refreshAndBroadcast() {
       news: classifiedNews,
       retail,
       bias,
-      commentary,
       cot: getCotData(),
       etf: getGoldEtfFlows(),
       geo: getGeoRisk(),

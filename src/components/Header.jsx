@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings, Bell } from 'lucide-react';
+import { Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings, Bell } from 'lucide-react';
 
 export default function Header({
   marketData,
@@ -7,8 +7,6 @@ export default function Header({
   isLive,
   isRefreshing,
   onRefresh,
-  onGenerateAI,
-  isAiGenerating,
   voiceEnabled,
   onToggleVoice,
   onOpenSettings,
@@ -147,17 +145,6 @@ export default function Header({
               {isLive ? 'STREAM LIVE' : 'CONNECTING'}
             </span>
           </div>
-
-          {/* Trigger Floor AI */}
-          <button
-            onClick={onGenerateAI}
-            disabled={isAiGenerating}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold font-mono bg-gold-500 hover:bg-gold-400 text-black transition-all shadow-md shadow-gold-500/10 active:scale-95 disabled:opacity-50"
-            title="Generate fresh AI Floor Trader commentary"
-          >
-            <Activity className={`w-3.5 h-3.5 ${isAiGenerating ? 'animate-spin' : ''}`} />
-            <span>{isAiGenerating ? 'THINKING...' : 'FLOOR INTEL'}</span>
-          </button>
 
           {/* Manual Refresh */}
           <button
