@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import Header from './components/Header';
-import TradingViewChart from './components/TradingViewChart';
 import MacroDriversGrid from './components/MacroDriversGrid';
 import CompositeBiasMeter from './components/CompositeBiasMeter';
 import NewsSentimentFeed from './components/NewsSentimentFeed';
@@ -25,6 +24,9 @@ import {
 } from './utils/voiceAlerts';
 
 export default function App() {
+  // Heavy TradingView widget (large inline Pine Script) — lazy-loaded to cut initial bundle
+  const TradingViewChart = lazy(() => import('./components/TradingViewChart'));
+
   const [marketData, setMarketData] = useState(null);
   const [news, setNews] = useState([]);
   const [bias, setBias] = useState(null);
@@ -329,7 +331,13 @@ export default function App() {
         {/* Row 1: Primary Advanced Chart (8 cols) + Composite Market Bias (4 cols) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
           <div className="lg:col-span-8 flex flex-col h-full">
-            <TradingViewChart marketData={marketData} />
+            <Suspense fallback={
+              <div className="hud-panel h-full min-h-[540px] flex items-center justify-center">
+                <span className="font-mono text-xs text-slate-500 animate-pulse">LOADING LIVE CHART ENGINE...</span>
+              </div>
+            }>
+              <TradingViewChart marketData={marketData} />
+            </Suspense>
           </div>
           <div className="lg:col-span-4 flex flex-col h-full">
             <CompositeBiasMeter bias={bias} />

@@ -59,12 +59,32 @@ export function classifyHeadline(title) {
   };
 }
 
+// Memoized classifier — news only changes every few minutes, but broadcastTick
+// runs on every live tick, so cache per-headline and recompute only new items.
+const classificationCache = new Map();
+
 export function classifyAllNews(newsList) {
-  return newsList.map(item => {
-    const classification = classifyHeadline(item.title);
+  const seenKeys = new Set();
+  const result = newsList.map(item => {
+    const key = item.id != null ? `id:${item.id}` : `title:${item.title}`;
+    seenKeys.add(key);
+    let classification = classificationCache.get(key);
+    if (!classification) {
+      classification = classifyHeadline(item.title);
+      classificationCache.set(key, classification);
+    }
     return {
       ...item,
       ...classification
     };
   });
+
+  // Prune stale entries so the cache never drifts
+  if (classificationCache.size > 200) {
+    for (const key of classificationCache.keys()) {
+      if (!seenKeys.has(key)) classificationCache.delete(key);
+    }
+  }
+
+  return result;
 }
