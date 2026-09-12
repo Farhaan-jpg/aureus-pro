@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Wifi, WifiOff, Database, Clock } from 'lucide-react';
+import { Activity, Wifi, WifiOff, Database, Clock, Shuffle } from 'lucide-react';
 
 function Freshness({ label, live, detail, kind = 'green' }) {
   const color = live ? 'text-emerald-400' : kind === 'warn' ? 'text-amber-400' : 'text-rose-400';
@@ -52,7 +52,7 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
       </div>
 
       {/* Core health summary strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
         <div className={rowCls}>
           <span className={labelCls}>Gold source</span>
           <span className={`${valCls} ${dh.goldSource && dh.goldSource !== 'unavailable' ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -70,6 +70,14 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
           <span className={labelCls}>Data staleness</span>
           <span className={`${valCls} ${!dh.stale ? 'text-emerald-400' : 'text-amber-400'}`}>
             {goldAge == null ? 'NO DATA' : dh.stale ? 'STALE > 30s' : 'FRESH'}
+          </span>
+        </div>
+        <div className={`${rowCls} sm:col-span-1 col-span-2`}>
+          <span className={labelCls}>Price cross-check</span>
+          <span className={`${valCls} flex items-center gap-1 ${dh.priceCheck?.sources >= 2 ? (dh.priceCheck?.discrepancy ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-500'}`}>
+            <Shuffle className="w-3 h-3" />
+            {dh.priceCheck?.sources ?? 0} src · spread {dh.priceCheck?.spread == null ? '?' : `$${dh.priceCheck.spread.toFixed(2)}`}
+            {dh.priceCheck?.discrepancy ? ' ⚠' : ''}
           </span>
         </div>
       </div>

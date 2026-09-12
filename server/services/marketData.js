@@ -1,6 +1,9 @@
 import WebSocket from 'ws';
 import { fetchJson } from './httpClient.js';
 import { getFredMacro, refreshFredMacro } from './fredMacro.js';
+import { getKeyLevels, refreshKeyLevels } from './keyLevels.js';
+import { getCorrelationMonitor, refreshCorrelationMonitor } from './correlationMonitor.js';
+import { getVolatilityRegime, refreshVolatilityRegime } from './volatilityRegime.js';
 
 const ASSETS = {
   GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', yahoo: 'GC=F', digits: 2 },
@@ -355,7 +358,31 @@ function quoteAge(q) {
 
 let lastYahooFetch = 0;
 let lastTvScan = 0;
+let lastYahooGold = null; // raw GC=F futures print for cross-source median
+let lastAltGold = null;   // goldprice.org spot print (3rd independent source)
 refreshFredMacro().catch(() => {});
+
+async function fetchAltGold() {
+  // Third independent spot print. gold-api.com is reliable & unthrottled;
+  // goldprice.org is kept as a fallback (it rate-limits aggressively).
+  try {
+    const json = await fetchJson('https://api.gold-api.com/price/XAU', {}, 5000);
+    const price = json?.price;
+    if (price != null) {
+      lastAltGold = { price: Number(price), ts: Date.now(), source: 'gold-api.com' };
+      return;
+    }
+  } catch (err) {}
+  try {
+    const json = await fetchJson('https://data-asg.goldprice.org/dbXRates/USD', {
+      headers: { Referer: 'https://goldprice.org/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' }
+    }, 5000);
+    const price = json?.items?.[0]?.xauPrice;
+    if (price != null) {
+      lastAltGold = { price: Number(price), ts: Date.now(), source: 'goldprice.org' };
+    }
+  } catch (err) {}
+}
 
 export async function getMarketData() {
   const now = Date.now();
@@ -366,11 +393,22 @@ export async function getMarketData() {
       Object.entries(ASSETS).map(async ([key, def]) => {
         const existing = quotes[key];
         const stale = !existing || quoteAge(existing) > 20000;
-        if (!stale && (key === 'GOLD' || key === 'SILVER' || key === 'DXY') && isTvWsConnected) return;
+        // GOLD is always refreshed so the raw GC=F print stays live for the
+        // 3-source median check; TV-connected SILVER/DXY skip the redundant fetch.
+        if (!stale && key !== 'GOLD' && isTvWsConnected) return;
         const q = await fetchYahooQuote(def.yahoo);
-        if (q) applyQuote(key, q, 'yahoo');
+        if (q) {
+          if (key === 'GOLD') {
+            // Raw GC=F print kept live for the 3-source median; never clobber a
+            // fresher TradingView spot quote with a futures reading.
+            lastYahooGold = { price: q.price, ts: Date.now() };
+            if (existing && quoteAge(existing) <= 20000 && existing.source !== 'yahoo') return;
+          }
+          applyQuote(key, q, 'yahoo');
+        }
       })
     ).catch(() => {});
+    fetchAltGold();
     refreshFredMacro().catch(() => {});
   }
 
@@ -469,6 +507,44 @@ export async function getMarketData() {
   }
 
   const goldAge = quoteAge(quotes.GOLD);
+
+  // ── Cross-source gold price verification ─────────────────────────────
+  const priceSources = [];
+  const goldQuote = quotes.GOLD;
+  const goldQuoteAge = goldAge;
+  if (goldQuote?.price && goldQuoteAge != null && goldQuoteAge < 30000) {
+    priceSources.push({
+      name: goldQuote.source === 'yahoo' ? 'Yahoo GC=F' : 'TradingView',
+      price: goldQuote.price,
+      ageMs: goldQuoteAge
+    });
+  }
+  const yahooGoldAge = lastYahooGold ? Date.now() - lastYahooGold.ts : null;
+  if (lastYahooGold && yahooGoldAge != null && yahooGoldAge < 60000 && !priceSources.some((s) => s.name === 'Yahoo GC=F')) {
+    priceSources.push({ name: 'Yahoo GC=F', price: lastYahooGold.price, ageMs: yahooGoldAge });
+  }
+  const altGoldAge = lastAltGold ? Date.now() - lastAltGold.ts : null;
+  if (lastAltGold && altGoldAge != null && altGoldAge < 60000) {
+    priceSources.push({ name: lastAltGold.source || 'Alt spot', price: lastAltGold.price, ageMs: altGoldAge });
+  }
+  const nums = priceSources.map((s) => s.price).filter(Number.isFinite);
+  let medianPrice = null;
+  let priceSpread = null;
+  let priceDiscrepancy = false;
+  if (nums.length >= 2) {
+    const sorted = [...nums].sort((a, b) => a - b);
+    medianPrice = Number(sorted[Math.floor(sorted.length / 2)].toFixed(2));
+    priceSpread = Number((sorted[sorted.length - 1] - sorted[0]).toFixed(2));
+    priceDiscrepancy = priceSpread > 2.5;
+  }
+  const goldPriceCheck = {
+    activeSources: priceSources.length,
+    medianPrice,
+    spread: priceSpread,
+    discrepancy: priceDiscrepancy,
+    sources: priceSources
+  };
+
   cachedMarketData = {
     timestamp: new Date().toISOString(),
     session: sessionFromUtc(),
@@ -479,6 +555,10 @@ export async function getMarketData() {
     breakeven10Y,
     fredRealYield10Y: fredReal,
     yieldCurveSpread,
+    goldPriceCheck,
+    keyLevels: getKeyLevels(),
+    longCorrelations: getCorrelationMonitor(),
+    volatilityRegime: getVolatilityRegime(),
     asianRange: {
       ...asianRange,
       high: asianRange.high != null ? Number(asianRange.high.toFixed(2)) : null,
@@ -488,7 +568,12 @@ export async function getMarketData() {
       tvWs: isTvWsConnected,
       goldSource: results.GOLD.source || 'unavailable',
       goldAgeMs: goldAge,
-      stale: goldAge == null || goldAge > 30000
+      stale: goldAge == null || goldAge > 30000,
+      priceCheck: {
+        sources: priceSources.length,
+        discrepancy: priceDiscrepancy,
+        spread: priceSpread
+      }
     },
     assets: results
   };

@@ -14,7 +14,8 @@ export default function CompositeBiasMeter({ bias }) {
     ictSweeps: 0,
     cot: 0,
     etf: 0,
-    geo: 0
+    geo: 0,
+    structure: 0
   };
 
   // Convert -100..+100 to angle in degrees (-90deg to +90deg for semi-circle)
@@ -32,15 +33,16 @@ export default function CompositeBiasMeter({ bias }) {
   const currentTheme = colorConfig[label] || colorConfig.NEUTRAL;
 
   const factors = [
-    { name: 'Macro (DXY / real yield)', weight: '18%', value: breakdown.macro ?? 0 },
-    { name: 'Metals & GSR', weight: '12%', value: breakdown.commodity ?? 0 },
+    { name: 'Macro (DXY / real yield)', weight: '16%', value: breakdown.macro ?? 0 },
+    { name: 'Price structure / key levels', weight: '12%', value: breakdown.structure ?? 0 },
+    { name: 'Metals & GSR', weight: '10%', value: breakdown.commodity ?? 0 },
     { name: 'VIX / risk-off', weight: '12%', value: breakdown.volatility ?? 0 },
     { name: 'News', weight: '12%', value: breakdown.news ?? 0 },
     { name: 'Asian range / ICT', weight: '10%', value: breakdown.ictSweeps ?? 0 },
-    { name: 'CFTC COT', weight: '10%', value: breakdown.cot ?? 0 },
-    { name: 'Gold ETF tape', weight: '10%', value: breakdown.etf ?? 0 },
-    { name: 'Retail / small traders', weight: '8%', value: breakdown.retail ?? 0 },
-    { name: 'Geopolitics (GDELT)', weight: '8%', value: breakdown.geo ?? 0 },
+    { name: 'CFTC COT', weight: '8%', value: breakdown.cot ?? 0 },
+    { name: 'Gold ETF tape', weight: '8%', value: breakdown.etf ?? 0 },
+    { name: 'Retail / small traders', weight: '6%', value: breakdown.retail ?? 0 },
+    { name: 'Geopolitics (GDELT)', weight: '6%', value: breakdown.geo ?? 0 },
   ];
 
   return (

@@ -8,16 +8,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SETTINGS_FILE = path.join(__dirname, '../data/terminal_settings.json');
 
+const DEFAULT_ALERT_TYPES = {
+  redFolderNews: true,
+  breakingNews: true,
+  biasFlips: true,
+  handleSweeps: true,
+  dataHealth: true
+};
+
 let botConfig = {
   botToken: process.env.TELEGRAM_BOT_TOKEN || '',
   chatId: process.env.TELEGRAM_CHAT_ID || '',
   enabled: false,
-  alertTypes: {
-    redFolderNews: true,
-    breakingNews: true,
-    biasFlips: true,
-    handleSweeps: true
-  }
+  alertTypes: { ...DEFAULT_ALERT_TYPES }
 };
 
 // Load saved settings if present
@@ -28,6 +31,7 @@ function loadSettings() {
       const parsed = JSON.parse(raw);
       if (parsed.telegram) {
         botConfig = { ...botConfig, ...parsed.telegram };
+        botConfig.alertTypes = { ...DEFAULT_ALERT_TYPES, ...(parsed.telegram.alertTypes || {}) };
       }
     }
   } catch (e) {}
@@ -48,7 +52,7 @@ export function updateTelegramConfig(newSettings = {}) {
   if (newSettings.botToken !== undefined) botConfig.botToken = newSettings.botToken;
   if (newSettings.chatId !== undefined) botConfig.chatId = newSettings.chatId;
   if (newSettings.enabled !== undefined) botConfig.enabled = newSettings.enabled;
-  if (newSettings.alertTypes) botConfig.alertTypes = { ...botConfig.alertTypes, ...newSettings.alertTypes };
+  if (newSettings.alertTypes) botConfig.alertTypes = { ...DEFAULT_ALERT_TYPES, ...botConfig.alertTypes, ...newSettings.alertTypes };
 
   try {
     let allSettings = {};
@@ -191,6 +195,77 @@ export async function sendJudasSweepTelegramAlert(sessionName, sweptLevel, sweep
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 💡 <b>Institutional Playbook:</b>
 <i>Asian Session liquidity captured. Watch for turtle-soup reversal rejection candles on 5M timeframe.</i>
+`.trim();
+
+  return await sendTelegramMessage(message);
+}
+
+// Feed degradation / fallback transition alert (deduped by the caller)
+export async function sendFeedHealthTelegramAlert(issues) {
+  if (!botConfig.enabled || !botConfig.alertTypes.dataHealth) return;
+
+  const lines = issues
+    .map((i) => `🔻 <b>${i.label}:</b> ${i.detail}`)
+    .join('\n');
+
+  const message = `
+⚠️ <b>AUREUS PRO FEED DEGRADATION</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+${lines}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🕒 <b>Detected:</b> ${new Date().toUTCString()}
+<i>Terminal automatically switched to fallback sources. Monitor accuracy on gold prints.</i>
+`.trim();
+
+  return await sendTelegramMessage(message);
+}
+
+// Scheduled daily morning briefing digest
+export async function sendDailyBriefingTelegramAlert(snap) {
+  if (!botConfig.enabled) return { success: false, error: 'Telegram dispatch disabled — configure a bot token & chat ID in Settings.' };
+
+  const fmt = (v, digits = 2) => (v == null ? '—' : Number(v).toFixed(digits));
+  const biasIcon = snap.bias?.score > 0 ? '🟢' : snap.bias?.score < 0 ? '🔴' : '⚪';
+  const levels = snap.marketData?.keyLevels?.levels || {};
+  const piv = levels.pivots || {};
+  const wk = levels.weekPivots || {};
+  const vreg = snap.marketData?.volatilityRegime || {};
+  const corr = snap.marketData?.longCorrelations || {};
+  const calendar = snap.calendar?.events || [];
+  const now = Date.now();
+  const upcoming = calendar
+    .filter((e) => {
+      const t = new Date(e.date).getTime();
+      return t > now - 60 * 60 * 1000 && t < now + 30 * 24 * 60 * 60 * 1000;
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(0, 5);
+  const catLines = upcoming.length
+    ? upcoming.map((e) => `${e.date ? new Date(e.date).toISOString().slice(11, 16) : ''}Z ${e.impact || ''} ${e.currency || ''} ${e.title || ''}${e.isEstimated ? ' (est)' : ''}`).join('\n')
+    : 'No scheduled high-importance releases in window.';
+
+  const message = `
+🌅 ☕ <b>AUREUS PRO DAILY BRIEFING</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+<b>Session:</b> ${snap.marketData?.session || '—'} UTC | ${new Date().toUTCString().slice(0, 16)}
+<b>XAU/USD:</b> $${fmt(snap.marketData?.goldSpot?.price)} (${(snap.marketData?.goldSpot?.changePercent || 0) > 0 ? '+' : ''}${fmt(snap.marketData?.goldSpot?.changePercent)}%)
+
+<b>🧭 Composite Bias:</b> ${biasIcon} <b>${(snap.bias?.label || 'NEUTRAL').toUpperCase()}</b> (${snap.bias?.score > 0 ? '+' : ''}${snap.bias?.score ?? 0}/100) — Conf ${snap.bias?.confidence ?? '—'}%
+
+<b>🔑 Key Levels:</b>
+PDH <b>$${fmt(levels.pdh, 0)}</b> | PDL <b>$${fmt(levels.pdl, 0)}</b>
+PWH <b>$${fmt(levels.pwh, 0)}</b> | PWL <b>$${fmt(levels.pwl, 0)}</b>
+P <b>$${fmt(piv.p, 0)}</b> | R1 <b>$${fmt(piv.r1, 0)}</b> | S1 <b>$${fmt(piv.s1, 0)}</b>
+
+<b>📊 Volatility:</b> ${vreg.regime || '—'} (ATR14 $${fmt(vreg.atr14)} · pct ${vreg.compositePercentile ?? '—'}%)
+<b>🎯 Corr (60d):</b> Gold vs DXY <b>${corr.goldDxy == null ? '—' : corr.goldDxy.toFixed(2)}</b> · vs US10Y <b>${corr.goldUs10y == null ? '—' : corr.goldUs10y.toFixed(2)}</b>
+<b>👥 Retail:</b> ${snap.retail?.live ? `${snap.retail.longPercentage?.toFixed(1) ?? '—'}% L / ${snap.retail.shortPercentage?.toFixed(1) ?? '—'}% S` : 'data pending'}
+<b>🌍 Geo risk:</b> ${snap.geo?.live ? `${snap.geo.score ?? 0}/100 (${(snap.geo.level || 'LOW')})` : 'data pending'}
+
+<b>📅 Next Releases:</b>
+${catLines}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+<i>Aureus Pro Terminal • Scheduled 08:05 IST daily digest</i>
 `.trim();
 
   return await sendTelegramMessage(message);

@@ -12,7 +12,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     score: 0,
     label: 'NEUTRAL',
     confidence: 0,
-    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0 },
+    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0, structure: 0 },
     used: []
   };
 
@@ -112,16 +112,67 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   }
   const geoSubScore = clamp(geoScore);
 
+  // ── Module I: Price structure / key levels ───────────────────────────
+  const levels = marketData.keyLevels?.levels;
+  const dailySwingHigh = levels?.swingHighs?.at(-1)?.price;
+  const dailySwingLow = levels?.swingLows?.at(-1)?.price;
+  let structureScore = 0;
+  if (currentPrice != null && levels?.pivots) {
+    const rds = [levels.pdh, levels.pivots.r1, levels.pivots.r2, levels.pwh, levels.weekPivots?.r1, dailySwingHigh];
+    const sds = [levels.pdl, levels.pivots.s1, levels.pivots.s2, levels.pwl, levels.weekPivots?.s1, dailySwingLow];
+    const resistances = rds.filter((v) => v != null && v > currentPrice);
+    const supports = sds.filter((v) => v != null && v < currentPrice);
+    const nearestRes = resistances.length ? Math.min(...resistances) : null;
+    const nearestSup = supports.length ? Math.max(...supports) : null;
+    const upMom = (gold.changePercent || 0) > 0.3;
+    const downMom = (gold.changePercent || 0) < -0.3;
+
+    if (nearestRes == null && (levels.pdh != null && currentPrice > levels.pdh) && (levels.pwh == null || levels.pwh == null || currentPrice > (levels.pwh || -Infinity))) {
+      // Cleared daily (and weekly) resistance engines -> breakout continuation
+      structureScore = upMom ? 16 : 10;
+    } else if (nearestSup == null && (levels.pdl != null && currentPrice < levels.pdl)) {
+      structureScore = downMom ? -16 : -10;
+    } else if (nearestRes != null && (nearestRes - currentPrice) < currentPrice * 0.0012) {
+      structureScore = -7; // lodged under key resistance
+    } else if (nearestSup != null && (currentPrice - nearestSup) < currentPrice * 0.0012) {
+      structureScore = 7; // riding key support
+    } else {
+      structureScore = currentPrice >= ((levels.pdh ?? currentPrice) + (levels.pdl ?? currentPrice)) / 2 ? 3 : -3;
+    }
+  }
+  let structureSubScore = clamp(structureScore);
+
+  // ── Volatility regime overlay (ATR percentile) ───────────────────────
+  const vreg = marketData.volatilityRegime;
+  let volRegimeFactor = 0;
+  if (vreg?.live && vreg.compositePercentile != null && currentPrice != null) {
+    const up = (gold.changePercent || 0) >= 0.2;
+    if (vreg.compositePercentile >= 75) volRegimeFactor = up ? 10 : -10;
+    else if (vreg.compositePercentile >= 50) volRegimeFactor = up ? 4 : -4;
+    else if (vreg.compositePercentile < 15) volRegimeFactor = 6; // squeeze anticipating expansion
+  }
+
+  // ── Long-horizon correlation regime (daily window) ───────────────────
+  const longCorr = marketData.longCorrelations;
+  let corrFactor = 0;
+  if (longCorr?.live) {
+    if (longCorr.goldDxy != null && longCorr.goldDxy > 0.35) corrFactor -= 8; // dollar rising WITH gold = move cracks
+    if (longCorr.goldUs10y != null && longCorr.goldUs10y < -0.45 && corrFactor === 0) corrFactor += 4; // deep inverse with yields = real bid
+  }
+  structureSubScore += volRegimeFactor + corrFactor;
+  structureSubScore = clamp(structureSubScore);
+
   const weights = {
-    macro: 0.18,
-    commodity: 0.12,
+    macro: 0.16,
+    commodity: 0.10,
     volatility: 0.12,
     ictSweeps: 0.10,
-    cot: 0.10,
-    retail: 0.08,
+    cot: 0.08,
+    retail: 0.06,
     news: 0.12,
-    etf: 0.10,
-    geo: 0.08
+    etf: 0.08,
+    geo: 0.06,
+    structure: 0.12
   };
 
   const totalScore =
@@ -133,7 +184,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     retailSubScore * weights.retail +
     newsSubScore * weights.news +
     etfSubScore * weights.etf +
-    geoSubScore * weights.geo;
+    geoSubScore * weights.geo +
+    structureSubScore * weights.structure;
 
   const finalScore = Math.round(clamp(totalScore));
   let label = 'NEUTRAL';
@@ -142,7 +194,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   else if (finalScore <= -55) label = 'STRONG SELL';
   else if (finalScore <= -20) label = 'SELL';
 
-  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore];
+  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore];
   const sameSign = subScores.filter((s) => (finalScore >= 0 ? s > 0 : s < 0)).length;
   const dataPoints = [
     dxyChange != null,
@@ -151,7 +203,10 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     cotPercentile != null,
     etf?.live,
     geo?.live,
-    newsCount > 0
+    newsCount > 0,
+    structureSubScore !== 0,
+    vreg?.live,
+    longCorr?.live
   ].filter(Boolean).length;
   const confidence = Math.min(92, Math.max(20, Math.round(18 + dataPoints * 7 + (sameSign / subScores.length) * 28)));
 
@@ -168,7 +223,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
       retail: Math.round(retailSubScore),
       news: Math.round(newsSubScore),
       etf: Math.round(etfSubScore),
-      geo: Math.round(geoSubScore)
+      geo: Math.round(geoSubScore),
+      structure: Math.round(structureSubScore)
     }
   };
 }

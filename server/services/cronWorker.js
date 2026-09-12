@@ -5,17 +5,22 @@ import { getRetailSentiment } from './retailSentiment.js';
 import { calculateCompositeBias } from './compositeBias.js';
 import { broadcastToAll } from '../routes/sse.js';
 import { getEconomicCalendar } from './economicCalendar.js';
-import {
-  sendRedFolderTelegramAlert,
-  sendRetailTrapTelegramAlert,
-  sendBiasFlipTelegramAlert
-} from './telegramBot.js';
 import { config } from '../config.js';
 import { fetchCotReport, getCotData } from './cotData.js';
 import { refreshGoldEtfFlows, getGoldEtfFlows } from './goldEtfFlows.js';
 import { refreshGeoRisk, getGeoRisk } from './geoRisk.js';
 import { refreshTimeframeMatrix, getTimeframeMatrix } from './timeframeMatrix.js';
 import { refreshFredMacro } from './fredMacro.js';
+import { refreshKeyLevels } from './keyLevels.js';
+import { refreshVolatilityRegime } from './volatilityRegime.js';
+import { refreshCorrelationMonitor } from './correlationMonitor.js';
+import {
+  sendRedFolderTelegramAlert,
+  sendRetailTrapTelegramAlert,
+  sendBiasFlipTelegramAlert,
+  sendFeedHealthTelegramAlert,
+  sendDailyBriefingTelegramAlert
+} from './telegramBot.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -23,6 +28,12 @@ let pendingBroadcastTimer = null;
 let lastSentBiasLabel = null;
 let lastRetailTrapAlertTime = 0;
 const alertedEventIds = new Set();
+
+// Feed-health transition detection: only alert when a source DEGRADES (once per
+// transition), so repeated fallback pings never spam the channel.
+const degradedAlerts = new Set();
+
+let briefSentForDate = null;
 
 function currentBias(marketData, classifiedNews, retail) {
   return calculateCompositeBias(marketData, classifiedNews, retail, {
@@ -99,7 +110,10 @@ export function startBackgroundWorker() {
         fetchCotReport(),
         refreshGoldEtfFlows(),
         refreshTimeframeMatrix(),
-        refreshFredMacro()
+        refreshFredMacro(),
+        refreshKeyLevels(),
+        refreshVolatilityRegime(),
+        refreshCorrelationMonitor()
       ]);
       broadcastToAll('MACRO_UPDATE', {
         cot: getCotData(),
@@ -121,6 +135,32 @@ export function startBackgroundWorker() {
       await checkTelegramTriggers(marketData, bias, retail);
     } catch (e) {}
   }, 30000);
+
+  // Daily Telegram briefing — fires once per UTC date within the schedule minute
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const todayKey = now.toISOString().slice(0, 10);
+      if (
+        now.getUTCHours() === config.dailyBriefUtcHour &&
+        now.getUTCMinutes() === config.dailyBriefUtcMinute &&
+        now.getUTCSeconds() < 30 &&
+        briefSentForDate !== todayKey
+      ) {
+        briefSentForDate = todayKey;
+        const marketData = await getMarketData();
+        const bias = currentBias(marketData, classifyAllNews(getCachedNews()), getRetailSentiment(marketData.goldSpot.price));
+        await sendDailyBriefingTelegramAlert({
+          marketData,
+          bias,
+          calendar: await getEconomicCalendar(),
+          geo: getGeoRisk(),
+          retail: getRetailSentiment(marketData.goldSpot.price)
+        });
+        console.log('[Aureus Worker] Daily Telegram briefing dispatched.');
+      }
+    } catch (e) {}
+  }, 15000);
 }
 
 async function checkTelegramTriggers(marketData, bias, retail) {
@@ -153,6 +193,37 @@ async function checkTelegramTriggers(marketData, bias, retail) {
       await sendBiasFlipTelegramAlert(bias.label, bias.score, goldPrice);
     }
     lastSentBiasLabel = bias.label;
+
+    await checkFeedHealth(marketData);
+  } catch (err) {}
+}
+
+// Detect fresh degradations only; clear flags when a feed recovers so a
+// subsequent outage can alert again.
+async function checkFeedHealth(marketData) {
+  try {
+    const dh = marketData?.dataHealth || {};
+    const geo = getGeoRisk();
+    const calendar = getEconomicCalendar();
+    const checks = [];
+
+    if (!dh.tvWs) checks.push({ key: 'tvWs', label: 'TradingView websocket', detail: 'disconnected — streaming to hot Yahoo/GoldPrice fallbacks' });
+    if (dh.stale) checks.push({ key: 'goldStale', label: 'Gold tape', detail: `last print >30s stale (age ${Math.round((dh.goldAgeMs || 0) / 1000)}s)` });
+    if (dh.goldSource === 'unavailable') checks.push({ key: 'goldUnavailable', label: 'Gold source', detail: 'no active quote source' });
+    if (dh.priceCheck?.discrepancy) checks.push({ key: 'goldSpread', label: 'Gold price spread', detail: `cross-source spread $${dh.priceCheck.spread?.toFixed(2)} across ${dh.priceCheck.sources} sources` });
+    if (geo?.source === 'rss-fallback') checks.push({ key: 'geoFallback', label: 'Geopolitics', detail: 'GDELT unreachable — using BBC/Al Jazeera RSS' });
+    if (calendar?.feedSource === 'benchmark') checks.push({ key: 'calFallback', label: 'Economic calendar', detail: 'ForexFactory unreachable — showing estimated schedule' });
+    if (!getGoldEtfFlows()?.live) checks.push({ key: 'etfStale', label: 'Gold ETF flows', detail: 'GLD/IAU/GLDM/SGOL feed not live' });
+
+    const freshIssues = checks.filter((c) => !degradedAlerts.has(c.key));
+    for (const check of checks) degradedAlerts.add(check.key);
+    const currentKeys = new Set(checks.map((c) => c.key));
+    for (const key of [...degradedAlerts]) {
+      if (!currentKeys.has(key)) degradedAlerts.delete(key); // recovered → can re-alert later
+    }
+    if (freshIssues.length) {
+      await sendFeedHealthTelegramAlert(freshIssues);
+    }
   } catch (err) {}
 }
 
@@ -167,7 +238,10 @@ export async function refreshAndBroadcast() {
       refreshGoldEtfFlows(),
       refreshGeoRisk(),
       refreshTimeframeMatrix(),
-      refreshFredMacro()
+      refreshFredMacro(),
+      refreshKeyLevels(),
+      refreshVolatilityRegime(),
+      refreshCorrelationMonitor()
     ]);
 
     const classifiedNews = classifyAllNews(rawNews);

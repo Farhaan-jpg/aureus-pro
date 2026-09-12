@@ -9,7 +9,7 @@ import { calculateCompositeBias } from '../services/compositeBias.js';
 import { getRetailSentiment } from '../services/retailSentiment.js';
 import { getEconomicCalendar } from '../services/economicCalendar.js';
 import { refreshAndBroadcast } from '../services/cronWorker.js';
-import { getTelegramConfig, updateTelegramConfig, sendTestTelegramAlert } from '../services/telegramBot.js';
+import { getTelegramConfig, updateTelegramConfig, sendTestTelegramAlert, sendDailyBriefingTelegramAlert } from '../services/telegramBot.js';
 import { getCotData, fetchCotReport } from '../services/cotData.js';
 import { refreshGoldEtfFlows, getGoldEtfFlows } from '../services/goldEtfFlows.js';
 import { refreshGeoRisk, getGeoRisk } from '../services/geoRisk.js';
@@ -176,6 +176,30 @@ router.post('/settings/telegram/test', async (req, res) => {
   try {
     const { botToken, chatId } = req.body;
     const result = await sendTestTelegramAlert(botToken, chatId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Manual trigger: send the scheduled daily briefing digest now (for testing)
+router.post('/telegram/daily-brief', async (req, res) => {
+  try {
+    const marketData = await getMarketData();
+    const classifiedNews = classifyAllNews(getCachedNews());
+    const retail = getRetailSentiment(marketData.goldSpot.price);
+    const bias = calculateCompositeBias(marketData, classifiedNews, retail, {
+      cot: getCotData(),
+      etf: getGoldEtfFlows(),
+      geo: getGeoRisk()
+    });
+    const result = await sendDailyBriefingTelegramAlert({
+      marketData,
+      bias,
+      calendar: await getEconomicCalendar(),
+      geo: getGeoRisk(),
+      retail
+    });
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

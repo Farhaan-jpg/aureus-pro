@@ -14,6 +14,8 @@ import DataHealthMonitor from './components/DataHealthMonitor';
 import SeasonalityPanel from './components/SeasonalityPanel';
 import PriceAlertManager from './components/PriceAlertManager';
 import SettingsModal from './components/SettingsModal';
+import KeyLevelsPanel from './components/KeyLevelsPanel';
+import VolatilityRegimePanel from './components/VolatilityRegimePanel';
 import {
   getVoiceSettings,
   saveVoiceSettings,
@@ -351,6 +353,16 @@ currentPrice={marketData?.goldSpot?.price}
           <MacroDriversGrid marketData={marketData} />
         </div>
 
+        {/* Row 2b: Key Levels (7 cols) + Volatility & Correlation Regime (5 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+          <div className="lg:col-span-7 flex flex-col h-full">
+            <KeyLevelsPanel marketData={marketData} />
+          </div>
+          <div className="lg:col-span-5 flex flex-col h-full">
+            <VolatilityRegimePanel marketData={marketData} />
+          </div>
+        </div>
+
         {/* Row 3: Institutional Sentiment & Session Execution Grid (3 cols) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           {/* Module G: Order Book Depth & Retail Sentiment Tracker */}
@@ -440,7 +452,7 @@ currentPrice={marketData?.goldSpot?.price}
       <PriceAlertManager
         isOpen={isPriceAlertsOpen}
         onClose={() => setIsPriceAlertsOpen(false)}
-        currentPrice={marketData?.goldSpot?.price || 4390}
+        currentPrice={marketData?.goldSpot?.price}
         voiceEnabled={voiceConfig.enabled}
       />
     </div>
