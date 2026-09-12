@@ -382,7 +382,7 @@ export default function TradingViewChart({ marketData }) {
   ];
 
   return (
-    <div className="hud-panel p-3.5 flex flex-col h-[540px] relative">
+    <div className="hud-panel p-3.5 flex flex-col min-h-[340px] lg:h-[540px] relative">
       {/* Chart Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 mb-2 border-b border-white/5 gap-2">
         <div className="flex items-center flex-wrap gap-2">

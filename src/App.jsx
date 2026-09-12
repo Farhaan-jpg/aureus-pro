@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import Header from './components/Header';
+import MobileNav from './components/MobileNav';
 import MacroDriversGrid from './components/MacroDriversGrid';
 import CompositeBiasMeter from './components/CompositeBiasMeter';
 import NewsSentimentFeed from './components/NewsSentimentFeed';
@@ -46,6 +47,29 @@ export default function App() {
   // its own failures (DEGRADED) instead of only reporting them to machines.
   const [health, setHealth] = useState(null);
   const [reconnecting, setReconnecting] = useState(false);
+
+  // Mobile-first section switch. Desktop ignores it (section always 'all').
+  const [section, setSection] = useState('live');
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const onChange = (e) => {
+      setIsMobile(e.matches);
+      if (!e.matches) setSection('all');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const vis = (tab) => (!isMobile || section === 'all' || section === tab) ? '' : 'hidden';
+  const onSelectSection = (tab) => {
+    setSection(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const stagger = (i) => ({ animationDelay: `${70 + i * 55}ms` });
 
   // Settings & Voice Controls
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -260,7 +284,7 @@ export default function App() {
         if (ev.impact !== 'High') return;
         const evTime = new Date(ev.date).getTime();
         const diffMin = (evTime - now) / 60000;
-        
+
         // Between 0 and 5 minutes away
         if (diffMin > 0 && diffMin <= 5.0) {
           const key = `${ev.title}_${ev.date}`;
@@ -328,8 +352,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07080b] text-slate-100 flex flex-col selection:bg-gold-500 selection:text-black">
-      {/* Institutional Navigation & Real-Time Header */}
+    <div className="min-h-screen bg-[#06070a] text-slate-100 flex flex-col selection:bg-gold-500 selection:text-black">
+      {/* Minimal real-time tape */}
       <Header
         marketData={marketData}
         bias={bias}
@@ -352,123 +376,106 @@ export default function App() {
       )}
 
       {/* Main Terminal Workspace */}
-      <main className="flex-1 max-w-[1920px] w-full mx-auto p-3 sm:p-4 space-y-4">
-        
-        {/* Top Institutional Layer: Multi-Timeframe Alignment Matrix (1M - 1D) */}
-        <div>
+      <main className={`flex-1 max-w-[1920px] w-full mx-auto p-3 lg:p-4 space-y-4 ${isMobile ? 'pb-nav' : ''}`}>
+
+        {/* ── LIVE: chart + bias + structure ─────────────────────────────── */}
+        <section className={vis('live')} style={stagger(0)}>
+          <div className="anim-panel grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            <div className="lg:col-span-8 flex flex-col h-full">
+              <Suspense fallback={
+                <div className="hud-panel flex-1 min-h-[340px] lg:min-h-[540px] flex items-center justify-center">
+                  <span className="font-mono text-xs text-slate-500 animate-pulse">LOADING LIVE CHART ENGINE...</span>
+                </div>
+              }>
+                <TradingViewChart marketData={marketData} />
+              </Suspense>
+            </div>
+            <div className="lg:col-span-4 flex flex-col h-full">
+              <CompositeBiasMeter bias={bias} />
+            </div>
+          </div>
+        </section>
+
+        <section className={`anim-panel ${vis('live')}`} style={stagger(1)}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            <div className="lg:col-span-7 flex flex-col h-full">
+              <KeyLevelsPanel marketData={marketData} />
+            </div>
+            <div className="lg:col-span-5 flex flex-col h-full">
+              <VolatilityRegimePanel marketData={marketData} />
+            </div>
+          </div>
+        </section>
+
+        <section className={`anim-panel ${vis('live')}`} style={stagger(2)}>
           <MultiTimeframeMatrix
             matrix={timeframes}
-currentPrice={marketData?.goldSpot?.price}
+            currentPrice={marketData?.goldSpot?.price}
             changePercent={marketData?.goldSpot?.changePercent || 0}
           />
-        </div>
+        </section>
 
-        {/* Row 1: Primary Advanced Chart (8 cols) + Composite Market Bias (4 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-          <div className="lg:col-span-8 flex flex-col h-full">
-            <Suspense fallback={
-              <div className="hud-panel h-full min-h-[540px] flex items-center justify-center">
-                <span className="font-mono text-xs text-slate-500 animate-pulse">LOADING LIVE CHART ENGINE...</span>
-              </div>
-            }>
-              <TradingViewChart marketData={marketData} />
-            </Suspense>
-          </div>
-          <div className="lg:col-span-4 flex flex-col h-full">
-            <CompositeBiasMeter bias={bias} />
-          </div>
-        </div>
-
-        {/* Row 2: Module A - Correlated Assets & Macro Drivers Grid */}
-        <div>
+        {/* ── MACRO: correlated assets + fundamentals ───────────────────── */}
+        <section className={`anim-panel ${vis('macro')}`} style={stagger(3)}>
           <MacroDriversGrid marketData={marketData} />
-        </div>
+        </section>
 
-        {/* Row 2b: Key Levels (7 cols) + Volatility & Correlation Regime (5 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-          <div className="lg:col-span-7 flex flex-col h-full">
-            <KeyLevelsPanel marketData={marketData} />
+        <section className={`anim-panel ${vis('macro')}`} style={stagger(4)}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
+            <div className="flex flex-col h-full"><CotReportGauge /></div>
+            <div className="flex flex-col h-full"><SeasonalityPanel /></div>
+            <div className="flex flex-col h-full"><GeoRiskPanel geo={geo} /></div>
+            <div className="flex flex-col h-full"><GoldEtfPanel etf={etf} /></div>
           </div>
-          <div className="lg:col-span-5 flex flex-col h-full">
-            <VolatilityRegimePanel marketData={marketData} />
-          </div>
-        </div>
+        </section>
 
-        {/* Row 3: Institutional Sentiment & Session Execution Grid (3 cols) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {/* Module G: Order Book Depth & Retail Sentiment Tracker */}
-          <div className="flex flex-col h-full">
-            <OrderBookSentiment
-              retailData={retail}
-              currentGoldPrice={marketData?.goldSpot?.price}
-            />
+        {/* ── FLOW: sentiment + sessions + news ─────────────────────────── */}
+        <section className={`anim-panel ${vis('flow')}`} style={stagger(5)}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            <div className="lg:col-span-5 flex flex-col h-full">
+              <OrderBookSentiment
+                retailData={retail}
+                currentGoldPrice={marketData?.goldSpot?.price}
+              />
+            </div>
+            <div className="lg:col-span-7 flex flex-col h-full">
+              <SessionJudasRadar currentPrice={marketData?.goldSpot?.price} marketData={marketData} />
+            </div>
           </div>
+        </section>
 
-          {/* Institutional ICT Session & Judas Swing Radar */}
-          <div className="flex flex-col h-full">
-            <SessionJudasRadar
-currentPrice={marketData?.goldSpot?.price}
-              marketData={marketData}
-            />
-          </div>
-
-          {/* Feed Health Monitor */}
-          <div className="flex flex-col h-full">
-            <DataHealthMonitor
-              marketData={marketData}
-              geo={geo}
-              etf={etf}
-              timeframes={timeframes}
-              calendar={calendar}
-              news={news}
-            />
-          </div>
-        </div>
-
-        {/* Row 4: Fundamental Catalysts - Economic Calendar (7 cols) + CFTC COT (5 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-          <div className="lg:col-span-7 flex flex-col h-full">
-            <EconomicCalendar calendarData={calendar} />
-          </div>
-          <div className="lg:col-span-5 flex flex-col h-full">
-            <CotReportGauge />
-          </div>
-        </div>
-
-        {/* Row 4b: Seasonal Strip + Geopolitical Risk Heat + Gold ETF Tape (3 cols) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          <div className="flex flex-col h-full">
-            <SeasonalityPanel />
-          </div>
-          <div className="flex flex-col h-full">
-            <GeoRiskPanel geo={geo} />
-          </div>
-          <div className="flex flex-col h-full">
-            <GoldEtfPanel etf={etf} />
-          </div>
-        </div>
-
-        {/* Row 5: Module B - High-Speed News Aggregator & AI Sentiment Classifier */}
-        <div>
+        <section className={`anim-panel ${vis('news')}`} style={stagger(6)}>
           <NewsSentimentFeed news={news} />
-        </div>
+        </section>
+
+        {/* ── DATA: calendar + integrity ────────────────────────────────── */}
+        <section className={`anim-panel ${vis('data')}`} style={stagger(7)}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            <div className="lg:col-span-7 flex flex-col h-full">
+              <EconomicCalendar calendarData={calendar} />
+            </div>
+            <div className="lg:col-span-5 flex flex-col h-full">
+              <DataHealthMonitor
+                marketData={marketData}
+                geo={geo}
+                etf={etf}
+                timeframes={timeframes}
+                calendar={calendar}
+                news={news}
+              />
+            </div>
+          </div>
+        </section>
 
       </main>
 
-      {/* Terminal Footer */}
-      <footer className="border-t border-white/5 bg-[#090b10] py-2.5 px-4 text-center text-[11px] font-mono text-slate-500">
-        <div className="max-w-[1920px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>AUREUS PRO INSTITUTIONAL GOLD TERMINAL v1.0.0</span>
-            <span className="text-slate-600">|</span>
-            <span>COMEX / LONDON OTC LIQUIDITY BUS</span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400">
-            <span>Keep-Alive: /healthz</span>
-          </div>
-        </div>
+      {/* Minimal footer */}
+      <footer className={`border-t border-white/5 py-2 px-4 text-center text-[10px] font-mono text-slate-600 ${isMobile ? 'pb-nav' : ''}`}>
+        <span>AUREUS PRO · XAU/USD INTELLIGENCE BUS v1.0.0 · /healthz</span>
       </footer>
+
+      {/* Mobile section switch */}
+      <MobileNav active={section} onSelect={onSelectSection} />
 
       {/* Terminal Settings & Dispatch Modal */}
       <SettingsModal

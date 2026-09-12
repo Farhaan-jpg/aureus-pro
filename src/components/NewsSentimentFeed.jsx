@@ -32,7 +32,7 @@ export default function NewsSentimentFeed({ news = [] }) {
   ];
 
   return (
-    <div className="hud-panel p-4 flex flex-col h-[520px]">
+    <div className="hud-panel p-4 flex flex-col min-h-[300px] lg:h-[520px]">
       {/* Header & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 mb-2 border-b border-white/5 gap-2">
         <div className="flex items-center gap-2">

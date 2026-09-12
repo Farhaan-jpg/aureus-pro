@@ -3,45 +3,113 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
-    background-color: #07080b;
-    color: #f1f5f9;
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #06070a;
+    color: #eef2f6;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    /* Ambient minimal backdrop: faint warm breath at the top, pure field below */
+    background-image: radial-gradient(1200px 500px at 50% -10%, rgba(245, 158, 11, 0.045), transparent 60%),
+      radial-gradient(900px 420px at 85% 110%, rgba(16, 185, 129, 0.03), transparent 55%);
+    background-attachment: fixed;
+  }
+  button {
+    touch-action: manipulation;
   }
 }
 
-/* Custom Institutional Scrollbar */
+/* Tight, inconspicuous scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0d13;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #202638;
-  border-radius: 3px;
+  background: #1b2230;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2f3750;
+  background: #2b3648;
 }
 
-/* Glassmorphism & HUD panel classes */
+/* ─────────────────────────────────────────────────────────────────────────────
+   MINIMAL DESIGN SYSTEM
+   Panels are quieter than before: translucent field, hairline border, soft
+   radius, no gold glow until focused. All padding budget belongs to data.
+   ───────────────────────────────────────────────────────────────────────────── */
 .hud-panel {
-  background: rgba(14, 17, 23, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 0.5rem;
+  background: linear-gradient(180deg, rgba(15, 18, 24, 0.72), rgba(10, 12, 16, 0.78));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(10px);
+  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
-
 .hud-panel:hover {
-  border-color: rgba(245, 158, 11, 0.2);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
-.hud-panel-gold {
-  background: linear-gradient(135deg, rgba(20, 24, 36, 0.9) 0%, rgba(14, 17, 23, 0.95) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.08);
+/* Entrance choreography: panels rise gently, staggered by the view */
+@keyframes panelUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-panel {
+  animation: panelUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Live-data pulses — calm, not strobe */
+@keyframes liveRing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+.live-ring {
+  animation: liveRing 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Price tick flash (applied alongside Tailwind color swaps) */
+@keyframes tickHighlight {
+  0% {
+    filter: brightness(1.9);
+    transform: translateY(0);
+  }
+  100% {
+    filter: brightness(1);
+    transform: translateY(0);
+  }
+}
+.tick-bump {
+  animation: tickHighlight 0.5s ease-out both;
+}
+
+/* Subtle value emphasis so the eye finds what changed */
+@keyframes softGlow {
+  0% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.soft-in {
+  animation: softGlow 0.6s ease-out both;
 }
 
 /* Tabular figures for rapid real-time price changes */
@@ -49,15 +117,68 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Subtle glow animations */
+/* Glow accents (kept faint) */
 .glow-gold {
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.22);
 }
-
 .glow-green {
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+}
+.glow-red {
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.2);
 }
 
-.glow-red {
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.3);
+/* ─────────────────────────────────────────────────────────────────────────────
+   MOBILE
+   ───────────────────────────────────────────────────────────────────────────── */
+/* Desktop tap affordances are generous; mobile needs full-height targets */
+.pad-tap {
+  min-height: 40px;
+}
+
+/* Sticky bottom section nav */
+.mobnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(7, 9, 13, 0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.mobnav button {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px 8px;
+  color: #5b6472;
+  font-family: 'JetBrains Mono', Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.mobnav button.active {
+  color: #fbbf24;
+}
+.mobnav button:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pb-nav {
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Respect reduced-motion users */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

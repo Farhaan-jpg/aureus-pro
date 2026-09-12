@@ -1,6 +1,8 @@
 import React from 'react';
-import { Radio, RefreshCw, ShieldAlert, Zap, TrendingUp, TrendingDown, Clock, Volume2, VolumeX, Settings, Bell } from 'lucide-react';
+import { RefreshCw, Bell, Volume2, VolumeX, Settings } from 'lucide-react';
 
+// Minimal terminal tape: price + change + session + bias + stream state.
+// Chrome removed; every pixel carries a number.
 export default function Header({
   marketData,
   bias,
@@ -14,224 +16,143 @@ export default function Header({
   onOpenSettings,
   onOpenPriceAlerts
 }) {
-  const gold = marketData?.goldSpot || { price: 4380.00, change: 0, changePercent: 0, high: 4385, low: 4320 };
+  const gold = marketData?.goldSpot || { price: 4380.0, change: 0, changePercent: 0, high: 4385, low: 4320 };
   const isUp = (gold.changePercent !== undefined && gold.changePercent !== 0 ? gold.changePercent : (gold.change || 0)) >= 0;
+  const change = gold.changePercent != null ? gold.changePercent : (gold.change || 0);
   const session = marketData?.session || 'ASIAN';
 
   const prevPriceRef = React.useRef(gold.price);
   const [flash, setFlash] = React.useState(null); // 'up' | 'down' | null
+  const [bumpKey, setBumpKey] = React.useState(0);
 
   React.useEffect(() => {
     if (prevPriceRef.current !== undefined && gold.price !== prevPriceRef.current) {
       const dir = gold.price > prevPriceRef.current ? 'up' : 'down';
       setFlash(dir);
-      const timer = setTimeout(() => setFlash(null), 700);
+      setBumpKey((k) => k + 1);
+      const timer = setTimeout(() => setFlash(null), 650);
       prevPriceRef.current = gold.price;
       return () => clearTimeout(timer);
     }
     prevPriceRef.current = gold.price;
   }, [gold.price]);
 
-  const sessionDisplayMap = {
-    ASIAN: { label: 'Asian Session (Tokyo/HK)', color: 'text-cyan-400 bg-cyan-950/40 border-cyan-800/50' },
-    LONDON_OPEN: { label: 'London Open (Judas Swing Zone)', color: 'text-amber-400 bg-amber-950/40 border-amber-800/50' },
-    NY_OVERLAP: { label: 'London / NY Overlap (Peak Volatility)', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/50' },
-    NY_AFTERNOON: { label: 'NY Afternoon (Late Settlement)', color: 'text-purple-400 bg-purple-950/40 border-purple-800/50' },
-    ASIAN_PACIFIC: { label: 'Asian Range (Pacific/Sydney)', color: 'text-cyan-400 bg-cyan-950/40 border-cyan-800/50' },
-    CLOSED: { label: 'Market Closed (Weekend)', color: 'text-rose-400 bg-rose-950/40 border-rose-800/50' }
+  const sessionMap = {
+    ASIAN: { label: 'Asian', color: 'text-cyan-400' },
+    ASIAN_PACIFIC: { label: 'Asian', color: 'text-cyan-400' },
+    LONDON_OPEN: { label: 'London', color: 'text-amber-400' },
+    NY_OVERLAP: { label: 'Overlap', color: 'text-emerald-400' },
+    NY_AFTERNOON: { label: 'NY', color: 'text-purple-400' },
+    CLOSED: { label: 'Closed', color: 'text-rose-400' }
   };
+  const s = sessionMap[session] || sessionMap.ASIAN;
 
-  const sessionInfo = sessionDisplayMap[session] || sessionDisplayMap.ASIAN;
-
-  // Honest stream state: SSE connectivity alone doesn't mean live data.
   const marketOpen = marketData?.marketState?.open !== false;
   const tapeAge = marketData?.dataHealth?.goldAgeMs;
   const tapeFresh = tapeAge == null || tapeAge < 30000;
-  const streamLabel = !marketOpen
-    ? 'MARKET CLOSED'
-    : isLive && tapeFresh ? 'STREAM LIVE'
-    : isLive ? `STALE TAPE ${Math.round((tapeAge ?? 0) / 1000)}s`
-    : 'CONNECTING';
-  const streamTextCls = !marketOpen
-    ? 'text-slate-400'
-    : isLive && tapeFresh ? 'text-emerald-400'
-    : isLive ? 'text-amber-400'
-    : 'text-slate-400';
-  const streamDotCls = !marketOpen
+  const streamText = !marketOpen
+    ? 'CLOSED'
+    : isLive && tapeFresh ? 'LIVE'
+    : isLive ? `STALE ${Math.round((tapeAge ?? 0) / 1000)}s`
+    : 'CONNECT';
+  const streamCls = !marketOpen
     ? 'bg-slate-500'
-    : isLive && tapeFresh ? 'bg-emerald-400 animate-pulse'
+    : isLive && tapeFresh ? 'bg-emerald-400 live-ring'
     : isLive ? 'bg-amber-400 animate-pulse'
-    : 'bg-rose-500';
+    : 'bg-rose-500 animate-pulse';
 
-  // /api/health snapshot: surfacing silent feed degradation as a first-class pill.
   const degraded = health?.status === 'DEGRADED';
-  const healthTooltip = health?.feeds
-    ? Object.entries(health.feeds).filter(([, v]) => v === false || v === 'offline' || v === 'unavailable').map(([k]) => k).join(', ') || 'all feeds nominal'
-    : 'health snapshot unavailable';
   const degradedFeeds = health?.feeds
     ? Object.entries(health.feeds).filter(([, v]) => v === false || v === 'offline' || v === 'unavailable').map(([k]) => k).join(', ')
     : '';
 
+  const biasCls = !bias
+    ? 'text-slate-500'
+    : bias.score >= 35 ? 'text-emerald-400'
+    : bias.score <= -35 ? 'text-rose-400'
+    : 'text-slate-300';
+
+  const iconCls = 'pad-tap w-10 lg:w-8 grid place-items-center rounded-lg text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition active:scale-95';
+
   return (
-    <header className="border-b border-white/10 bg-[#0a0c12]/90 backdrop-blur-md sticky top-0 z-50">
-      <div className="max-w-[1920px] mx-auto px-4 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
-        
-        {/* Brand & Ticker */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded bg-gradient-to-br from-gold-400 to-amber-600 flex items-center justify-center font-extrabold text-black text-lg shadow-lg shadow-gold-500/20">
-              AU
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-base tracking-wider text-white">AUREUS PRO</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold bg-gold-500/20 text-gold-400 border border-gold-500/30">
-                  INSTITUTIONAL
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-mono">XAU/USD Real-Time Intelligence Bus</p>
-            </div>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07080b]/85 backdrop-blur-xl">
+      <div className="max-w-[1920px] mx-auto px-3 lg:px-4 py-2.5 flex items-center gap-3 lg:gap-4 flex-wrap">
+        {/* Brand */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-gold-400 to-amber-600 grid place-items-center font-extrabold text-black text-sm shadow-md shadow-gold-500/20">
+            AU
           </div>
-
-          <div className="h-7 w-[1px] bg-white/10 hidden sm:block"></div>
-
-          {/* Primary Gold Price Display with Real-Time Tick Flash */}
-          <div className="flex items-center gap-2.5">
-            <div className={`px-2.5 py-1 rounded-lg border transition-all duration-200 ${
-              flash === 'up' 
-                ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300 shadow-md shadow-emerald-500/30 scale-[1.02]' :
-              flash === 'down' 
-                ? 'bg-rose-500/25 border-rose-400 text-rose-300 shadow-md shadow-rose-500/30 scale-[1.02]' :
-              'bg-slate-900/80 border-white/10 text-white'
-            }`}>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xl sm:text-2xl font-mono font-extrabold tracking-tight tabular-nums">
-                  ${gold.price ? Number(gold.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '---'}
-                </span>
-                <span className={`inline-block w-2 h-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} title="Live WebSocket Tick Stream" />
-              </div>
-            </div>
-
-            {/* Prominent Real-Time Percentage & Dollar Change Badges */}
-            <div className="flex items-center gap-1.5">
-              {/* Dollar Change */}
-              <div className={`flex items-center text-xs font-mono font-bold px-2 py-1 rounded border ${
-                isUp ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60' : 'text-rose-400 bg-rose-950/60 border-rose-800/60'
-              }`}>
-                {isUp ? <TrendingUp className="w-3.5 h-3.5 mr-1 inline shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 mr-1 inline shrink-0" />}
-                <span className="tabular-nums">{isUp ? '+' : ''}{Number(gold.change || 0).toFixed(2)}</span>
-              </div>
-
-              {/* High-Contrast Percentage Change Badge */}
-              <div className={`flex items-center text-xs font-mono font-extrabold px-2 py-1 rounded border ${
-                isUp 
-                  ? 'text-emerald-300 bg-emerald-900/80 border-emerald-500/60 shadow-sm shadow-emerald-500/20' 
-                  : 'text-rose-300 bg-rose-900/80 border-rose-500/60 shadow-sm shadow-rose-500/20'
-              }`} title="24-Hour Net Percentage Change">
-                <span className="tabular-nums">{isUp ? '+' : ''}{Number(gold.changePercent || 0).toFixed(2)}%</span>
-              </div>
-            </div>
-
-            {/* High/Low/Bid/Ask/Spread */}
-            <div className="hidden xl:flex items-center gap-3 text-[11px] text-slate-400 font-mono pl-1 border-l border-white/10">
-              <span>H: <strong className="text-slate-200">${Number(gold.high || gold.price || 0).toFixed(2)}</strong></span>
-              <span>L: <strong className="text-slate-200">${Number(gold.low || gold.price || 0).toFixed(2)}</strong></span>
-              <span>Bid: <strong className="text-slate-200">${gold.bid != null ? Number(gold.bid).toFixed(2) : (gold.price != null ? Number(gold.price - 0.20).toFixed(2) : '---')}</strong></span>
-              <span>Ask: <strong className="text-slate-200">${gold.ask != null ? Number(gold.ask).toFixed(2) : (gold.price != null ? Number(gold.price + 0.20).toFixed(2) : '---')}</strong></span>
-              <span>Spread: <strong className="text-gold-400">${Number(marketData?.spread || gold.spread || 0.40).toFixed(2)}</strong></span>
-            </div>
-            <div className="flex xl:hidden items-center gap-2 text-[11px] text-slate-400 font-mono">
-              <span>H: <strong className="text-slate-200">${Number(gold.high || gold.price || 0).toFixed(2)}</strong></span>
-              <span>L: <strong className="text-slate-200">${Number(gold.low || gold.price || 0).toFixed(2)}</strong></span>
-            </div>
-          </div>
+          <span className="hidden sm:block font-bold tracking-widest text-sm text-white">
+            AUREUS
+          </span>
         </div>
 
-        {/* Middle Session & Bias Pills */}
-        <div className="flex items-center flex-wrap gap-2">
-          {/* Active Trading Session */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border ${sessionInfo.color}`}>
-            <Clock className="w-3.5 h-3.5" />
-            <span>{sessionInfo.label}</span>
-          </div>
-
-          {/* Composite Bias Pill */}
-          {bias && (
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-semibold border ${
-              bias.score >= 35 ? 'text-emerald-400 bg-emerald-950/50 border-emerald-800/60' :
-              bias.score <= -35 ? 'text-rose-400 bg-rose-950/50 border-rose-800/60' :
-              'text-slate-300 bg-slate-900 border-slate-700'
-            }`}>
-              <Zap className="w-3.5 h-3.5 text-gold-400" />
-              <span>BIAS: {bias.label} ({bias.score > 0 ? '+' : ''}{bias.score})</span>
-            </div>
-          )}
-        </div>
-
-        {/* Right Status & Trigger Buttons */}
+        {/* Price + flash */}
         <div className="flex items-center gap-2">
-          {/* SSE Connection / Tape State */}
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900/80 border border-white/5 text-[11px] font-mono" title={`Gold tape age: ${tapeAge == null ? '—' : Math.round(tapeAge / 1000) + 's'}`}>
-            <span className={`w-2 h-2 rounded-full ${streamDotCls}`} />
-            <span className={streamTextCls}>
-              {streamLabel}
+          <div className={`px-2 py-1 rounded-lg border transition-colors duration-200 ${
+            flash === 'up' ? 'bg-emerald-500/20 border-emerald-400/70' :
+            flash === 'down' ? 'bg-rose-500/20 border-rose-400/70' :
+            'bg-white/5 border-white/10'
+          }`}>
+            <span key={bumpKey} className={`font-mono font-extrabold text-lg sm:text-2xl tabular-nums tracking-tight ${
+              flash === 'up' ? 'text-emerald-300' : flash === 'down' ? 'text-rose-300' : 'text-white'
+            }`}>
+              ${gold.price ? Number(gold.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
             </span>
           </div>
 
-          {/* Feed Degradation Pill (from /api/health) */}
-          {health && (
-            <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900/80 border text-[11px] font-mono ${
-              degraded ? 'border-amber-700/60 text-amber-300' : 'border-white/5 text-emerald-500/80'
-            }`} title={degraded ? `Degraded feeds: ${degradedFeeds || 'see health'}` : healthTooltip}>
-              {degraded ? <ShieldAlert className="w-3 h-3" /> : <Radio className="w-3 h-3" />}
-              <span className={degraded ? 'font-bold animate-pulse' : ''}>
-                {degraded ? 'HEALTH DEGRADED' : 'HEALTHY'}
-              </span>
-            </div>
+          <div className={`text-[11px] lg:text-xs font-mono font-bold tabular-nums ${
+            isUp ? 'text-emerald-400' : 'text-rose-400'
+          }`}>
+            {isUp ? '+' : ''}{Number(gold.change || 0).toFixed(2)} ({isUp ? '+' : ''}{Number(change || 0).toFixed(2)}%)
+          </div>
+
+          <div className="hidden md:flex items-center gap-2.5 text-[10px] font-mono text-slate-500">
+            <span>H <b className="text-slate-300">${Number(gold.high || gold.price || 0).toFixed(2)}</b></span>
+            <span>L <b className="text-slate-300">${Number(gold.low || gold.price || 0).toFixed(2)}</b></span>
+          </div>
+        </div>
+
+        {/* Session + Bias (quiet chips) */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className={`hidden xl:inline text-[10px] font-mono uppercase tracking-wider ${s.color}`}>{s.label}</span>
+
+          {bias && (
+            <span className={`text-[10px] lg:text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md ${biasCls}`}>
+              {bias.label} {bias.score > 0 ? '+' : ''}{bias.score}
+            </span>
           )}
 
-          {/* Manual Refresh */}
-          <button
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            className="p-1.5 rounded text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-white/10 transition active:scale-95"
-            title="Sync all market feeds"
+          <span
+            className="flex items-center gap-1.5 text-[10px] lg:text-[11px] font-mono px-2 py-0.5 rounded-md text-slate-400"
+            title={degraded ? `Degraded: ${degradedFeeds}` : tapeAge == null ? 'feed state unknown' : `tape ${Math.round(tapeAge / 1000)}s old`}
           >
+            <span className={`w-1.5 h-1.5 rounded-full ${streamCls}`} />
+            <span>{reconnecting ? 'RECONNECT' : streamText}</span>
+          </span>
+
+          {health && degraded && (
+            <span className="text-[10px] font-mono font-bold text-amber-300 animate-pulse">
+              {degradedFeeds ? degradedFeeds.toUpperCase() : 'DEGRADED'}
+            </span>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1">
+          <button onClick={onRefresh} disabled={isRefreshing} className={iconCls} title="Sync all feeds">
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-gold-400' : ''}`} />
           </button>
-
-          {/* Custom Price Alerts Bell */}
-          <button
-            onClick={onOpenPriceAlerts}
-            className="p-1.5 rounded border border-white/10 text-slate-300 hover:text-gold-400 bg-slate-900 hover:bg-slate-800 transition active:scale-95"
-            title="Custom Price Level Audio Alerts"
-          >
+          <button onClick={onOpenPriceAlerts} className={iconCls} title="Price alerts">
             <Bell className="w-4 h-4" />
           </button>
-
-          {/* Voice Alert Quick Toggle */}
-          <button
-            onClick={onToggleVoice}
-            className={`p-1.5 rounded border transition active:scale-95 ${
-              voiceEnabled 
-                ? 'text-gold-400 bg-gold-950/50 border-gold-500/40 hover:bg-gold-900/60 shadow-sm shadow-gold-500/20' 
-                : 'text-slate-500 bg-slate-900 hover:bg-slate-800 border-white/10 hover:text-slate-300'
-            }`}
-            title={voiceEnabled ? 'Voice Alerts Active (Indian English Male) - Click to Mute' : 'Voice Alerts Muted - Click to Enable'}
-          >
+          <button onClick={onToggleVoice} className={`${iconCls} ${voiceEnabled ? 'text-gold-400' : 'text-slate-500'}`} title="Voice alerts">
             {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
-
-          {/* Settings Modal Toggle */}
-          <button
-            onClick={onOpenSettings}
-            className="p-1.5 rounded text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-white/10 transition active:scale-95 hover:border-gold-500/30"
-            title="Terminal Settings & Custom Dispatch"
-          >
+          <button onClick={onOpenSettings} className={iconCls} title="Settings">
             <Settings className="w-4 h-4" />
           </button>
         </div>
-
       </div>
     </header>
   );
