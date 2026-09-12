@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Settings, Volume2, VolumeX, Send,
-  ShieldCheck, AlertTriangle, CheckCircle, RefreshCw, Sliders, Bell
+  ShieldCheck, AlertTriangle, CheckCircle, RefreshCw, Sliders, Bell, Smile
 } from 'lucide-react';
 import { 
   getVoiceSettings, 
@@ -9,9 +9,16 @@ import {
   testIndianEnglishVoice,
   getAvailableVoices
 } from '../utils/voiceAlerts';
+import {
+  getBuddySettings,
+  saveBuddySettings,
+  getCharacters,
+  resolveVoiceFor,
+  speakGreeting
+} from '../utils/buddyMode';
 
 export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
-  const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'telegram' | 'terminal'
+  const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'telegram' | 'terminal' | 'buddy'
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -20,6 +27,11 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
   const [voiceConfig, setVoiceConfig] = useState(getVoiceSettings());
   const [availableVoices, setAvailableVoices] = useState([]);
   const [isSpeakingTest, setIsSpeakingTest] = useState(false);
+
+  // Buddy Mode State
+  const [buddyConfig, setBuddyConfig] = useState(getBuddySettings());
+  const characters = getCharacters();
+  const currentChar = characters.find((c) => c.id === buddyConfig.characterId) || characters[0];
 
   // Telegram Settings State
   const [telegramConfig, setTelegramConfig] = useState({
@@ -43,6 +55,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
     setVoiceConfig(getVoiceSettings());
     const voices = getAvailableVoices();
     setAvailableVoices(voices);
+    setBuddyConfig(getBuddySettings());
 
     // Fetch server settings
     fetch('/api/settings')
@@ -200,6 +213,18 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
           >
             <Sliders className="w-3.5 h-3.5" />
             Trading Rules
+          </button>
+
+          <button
+            onClick={() => setActiveTab('buddy')}
+            className={`flex items-center gap-2 px-3 py-3 text-xs font-mono font-medium border-b-2 transition whitespace-nowrap ${
+              activeTab === 'buddy' 
+                ? 'border-gold-400 text-gold-400' 
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Smile className="w-3.5 h-3.5" />
+            Buddy Mode
           </button>
         </div>
 
@@ -488,6 +513,135 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                     5m (SCALPING)
                   </span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: Buddy Mode */}
+          {activeTab === 'buddy' && (
+            <div className="space-y-4">
+              <div className="p-3.5 rounded-lg bg-purple-950/20 border border-purple-500/20 flex items-start gap-3">
+                <Smile className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <span className="font-semibold text-purple-300 block">Terminal Buddy — Voice Persona</span>
+                  <p className="text-slate-300 mt-0.5">
+                    Turns dry alerts into character: random idle chatter, funny reactions to big moves,
+                    and event announcements in persona. Requires the Voice Alerts master switch in the
+                    Voice tab. Voices are inspired (pitch/rate/voice tuning), not cloned recordings of real actors.
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Buddy Switch */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div>
+                  <div className="text-xs font-bold text-white uppercase tracking-wider">Buddy Mode Master Switch</div>
+                  <div className="text-[11px] text-slate-400">Persona on all alerts + idle chatter</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={buddyConfig.buddyEnabled}
+                    onChange={e => {
+                      const next = { ...buddyConfig, buddyEnabled: e.target.checked };
+                      setBuddyConfig(next);
+                      saveBuddySettings(next);
+                      if (e.target.checked) speakGreeting();
+                    }}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                </label>
+              </div>
+
+              {/* Chatter Switch */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div>
+                  <div className="text-xs font-bold text-white uppercase tracking-wider">Random Chatter</div>
+                  <div className="text-[11px] text-slate-400">Buddy occasionally talks for fun while the tape is live</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={buddyConfig.chatterEnabled}
+                    onChange={e => {
+                      const next = { ...buddyConfig, chatterEnabled: e.target.checked };
+                      setBuddyConfig(next);
+                      saveBuddySettings(next);
+                    }}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                </label>
+              </div>
+
+              {/* Chat Density */}
+              <div className="p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Chatter Frequency</div>
+                <div className="flex gap-2">
+                  {[
+                    { id: 'chill', label: 'Chill', desc: '5-12 min' },
+                    { id: 'balanced', label: 'Balanced', desc: '3-8 min' },
+                    { id: 'hyper', label: 'Hyper', desc: '1.5-4 min' }
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        const next = { ...buddyConfig, cadence: c.id };
+                        setBuddyConfig(next);
+                        saveBuddySettings(next);
+                      }}
+                      className={`flex-1 px-2 py-2 rounded-lg border text-xs font-mono transition active:scale-95 ${
+                        buddyConfig.cadence === c.id
+                          ? 'bg-purple-500/15 border-purple-500/50 text-purple-300'
+                          : 'bg-slate-900 border-white/10 text-slate-400 hover:border-white/25'
+                      }`}
+                    >
+                      <span className="block font-bold">{c.label}</span>
+                      <span className="block text-[10px] opacity-70">{c.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Character Grid */}
+              <div className="p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Character ({currentChar && <span className="text-purple-300">{currentChar.emoji} {currentChar.name}</span>})
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {characters.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        const next = { ...buddyConfig, characterId: c.id, buddyEnabled: true };
+                        setBuddyConfig(next);
+                        saveBuddySettings(next);
+                        speakGreeting();
+                      }}
+                      className={`p-2.5 rounded-lg border text-left transition active:scale-95 ${
+                        buddyConfig.characterId === c.id
+                          ? 'bg-purple-500/15 border-purple-500/50'
+                          : 'bg-slate-900 border-white/10 hover:border-white/25'
+                      }`}
+                    >
+                      <div className="text-lg leading-none">{c.emoji}</div>
+                      <div className="text-xs font-bold text-white mt-1.5">{c.name}</div>
+                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{c.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => speakGreeting(true)}
+                  className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono font-bold bg-purple-500 hover:bg-purple-400 text-black active:scale-95 transition shadow-lg shadow-purple-500/20"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  HEAR {currentChar?.name?.toUpperCase() || 'BUDDY'}
+                </button>
+                <p className="mt-2 text-[10px] text-slate-500">Tuning note: voices are inspired by personas (pitch/rate). Exact actor voices can't be used — platform policy blocks cloned voices, even for personal use.</p>
               </div>
             </div>
           )}

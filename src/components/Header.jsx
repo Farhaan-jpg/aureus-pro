@@ -14,7 +14,10 @@ export default function Header({
   voiceEnabled,
   onToggleVoice,
   onOpenSettings,
-  onOpenPriceAlerts
+  onOpenPriceAlerts,
+  buddyChar,
+  buddyEnabled,
+  onCycleBuddy
 }) {
   const gold = marketData?.goldSpot || { price: 4380.0, change: 0, changePercent: 0, high: 4385, low: 4320 };
   const isUp = (gold.changePercent !== undefined && gold.changePercent !== 0 ? gold.changePercent : (gold.change || 0)) >= 0;
@@ -148,6 +151,13 @@ export default function Header({
           </button>
           <button onClick={onToggleVoice} className={`${iconCls} ${voiceEnabled ? 'text-gold-400' : 'text-slate-500'}`} title="Voice alerts">
             {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={onCycleBuddy}
+            className={`${iconCls} ${buddyEnabled ? 'text-gold-400 border-gold-500/25 bg-gold-500/10' : 'text-slate-500'}`}
+            title={buddyChar ? `Buddy: ${buddyChar.name} — click to switch` : 'Buddy Mode: pick a character'}
+          >
+            <span className="text-sm leading-none">{buddyChar?.emoji || '🗣️'}</span>
           </button>
           <button onClick={onOpenSettings} className={iconCls} title="Settings">
             <Settings className="w-4 h-4" />

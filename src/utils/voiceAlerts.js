@@ -1,5 +1,8 @@
 // Indian English Male Voice Alerts Engine for Aureus Pro
-// Native Web Speech Synthesis with Indian English male vocal profile (en-IN), pitch adjustment, and dual-tone alert chime.
+// Native Web Speech Synthesis with Indian English male vocal profile (en-IN),
+// pitch adjustment, and dual-tone alert chime. Buddy Mode may override the
+// line and voice per character — alert routes defer to it when enabled.
+import { announce } from './buddyMode.js';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -132,7 +135,7 @@ export function speakAlert(text, options = {}) {
 
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
-      const voice = getIndianEnglishVoice();
+      const voice = options.voice || getIndianEnglishVoice();
 
       if (voice) {
         utterance.voice = voice;
@@ -163,6 +166,7 @@ export function testIndianEnglishVoice() {
 // 2. High-Impact Economic Event Imminent Alert
 export function speakEventImminent(eventTitle, minutesRemaining) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.redFolderImminent) return;
+  if (announce('redFolder', { event: eventTitle, mins: minutesRemaining })) return;
   const minText = minutesRemaining <= 1 ? "in one minute" : `in ${minutesRemaining} minutes`;
   speakAlert(`High impact event alert: ${eventTitle} releases ${minText}. Flatten scalping exposure.`);
 }
@@ -171,18 +175,21 @@ export function speakEventImminent(eventTitle, minutesRemaining) {
 export function speakBreakingNews(headline, sentiment) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.breakingNews) return;
   const sentimentNote = sentiment === 'BULLISH' ? 'Bullish for gold.' : sentiment === 'BEARISH' ? 'Bearish pressure on bullion.' : '';
+  if (announce('breakingNews', { headline, sentiment: sentimentNote })) return;
   speakAlert(`Breaking gold news: ${headline}. ${sentimentNote}`);
 }
 
 // 4. Institutional Bias Directional Flip Alert
 export function speakBiasFlip(newBiasLabel, score) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.biasFlips) return;
+  if (announce('biasFlip', { label: newBiasLabel, score })) return;
   speakAlert(`Market flow shift: Institutional composite bias flipped to ${newBiasLabel}. Score ${score}.`);
 }
 
 // 5. 5-Minute Psychological Handle Sweep Alert ($10 Round Numbers)
 export function speakHandleSweep(priceHandle) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.handleSweeps) return;
+  if (announce('sweep', { handle: priceHandle })) return;
   speakAlert(`Gold spot testing key handle: ${priceHandle} dollars. Watch for five minute liquidity sweep.`);
 }
 

@@ -25,6 +25,15 @@ import {
   speakBreakingNews,
   speakHandleSweep
 } from './utils/voiceAlerts';
+import {
+  getBuddySettings,
+  saveBuddySettings,
+  nextCharacter,
+  getCharacters,
+  getChatterRange,
+  announce,
+  speakGreeting
+} from './utils/buddyMode';
 
 // Heavy TradingView widget (large inline Pine Script) — lazy-loaded at module scope
 // so its component identity stays stable across re-renders (a locally-defined lazy
@@ -76,17 +85,50 @@ export default function App() {
   const [isPriceAlertsOpen, setIsPriceAlertsOpen] = useState(false);
   const [voiceConfig, setVoiceConfig] = useState(getVoiceSettings());
 
-  // Voice Alert Tracking Refs to prevent spam
+  // Buddy Mode: persona + chatter engine (see utils/buddyMode.js)
+  const [buddyState, setBuddyState] = useState(getBuddySettings());
+  const buddyChar = getCharacters().find(c => c.id === buddyState.characterId) || getCharacters()[0];
+
+  // Voice/Buddy Alert Tracking Refs to prevent spam
   const lastBiasRef = useRef(null);
   const lastSpokenNewsIdRef = useRef(null);
   const lastSpokenHandleRef = useRef(null);
   const alertedEventsRef = useRef(new Set());
+  const prevPriceRef = useRef(null);
+  const lastMoveSpokenAtRef = useRef(0);
+  const lastMarketOpenRef = useRef(null);
+  const wasDegradedRef = useRef(false);
+  const greetedRef = useRef(false);
 
   // Quick Voice Toggle
   const handleToggleVoice = useCallback(() => {
     const updated = saveVoiceSettings({ enabled: !voiceConfig.enabled });
     setVoiceConfig({ ...updated });
   }, [voiceConfig.enabled]);
+
+  // Budget-friendly market session window (mirrors server session util):
+  // opens Sunday 22:00 UTC, closes Friday 21:00 UTC.
+  const isMarketOpenNow = useCallback(() => {
+    const now = new Date();
+    const utcDay = now.getUTCDay();
+    const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60;
+    if (utcDay === 0) return utcHours >= 22;
+    if (utcDay === 5) return utcHours < 21;
+    if (utcDay === 6) return false;
+    return true;
+  }, []);
+
+  // Cycle Buddy: next character + greet from the new persona
+  const cycleBuddy = useCallback(() => {
+    const { settings } = nextCharacter();
+    setBuddyState({ ...settings });
+    speakGreeting();
+  }, []);
+
+  // Boot-time sync + resync when SettingsModal closes
+  const resyncBuddy = useCallback(() => {
+    setBuddyState(getBuddySettings());
+  }, []);
 
   // Active health poll so the HUD reflects feed degradation in real time
   useEffect(() => {
@@ -338,6 +380,80 @@ export default function App() {
     };
   }, []);
 
+  // ── Buddy Mode engine ────────────────────────────────────────────────────
+  // Welcome greet on first live tape
+  useEffect(() => {
+    if (!greetedRef.current && marketData?.goldSpot?.price && buddyState.buddyEnabled) {
+      greetedRef.current = true;
+      const t = setTimeout(() => speakGreeting(), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [marketData?.goldSpot?.price, buddyState.buddyEnabled]);
+
+  // Big-move reactions (|price delta| >= 0.12% between ticks, 60s cool-down)
+  useEffect(() => {
+    const price = marketData?.goldSpot?.price;
+    if (typeof price !== 'number' || !buddyState.buddyEnabled) {
+      prevPriceRef.current = price;
+      return;
+    }
+    if (prevPriceRef.current != null && prevPriceRef.current !== price) {
+      const pct = Math.abs((price - prevPriceRef.current) / prevPriceRef.current) * 100;
+      const now = Date.now();
+      if (pct >= 0.12 && now - lastMoveSpokenAtRef.current > 60000) {
+        lastMoveSpokenAtRef.current = now;
+        announce(price > prevPriceRef.current ? 'moveUp' : 'moveDown');
+      }
+    }
+    prevPriceRef.current = price;
+  }, [marketData?.goldSpot?.price, buddyState.buddyEnabled]);
+
+  // Market open/close transition announcements
+  useEffect(() => {
+    const open = isMarketOpenNow();
+    if (buddyState.buddyEnabled && lastMarketOpenRef.current != null && lastMarketOpenRef.current !== open) {
+      announce(open ? 'marketOpen' : 'marketClosed');
+    }
+    lastMarketOpenRef.current = open;
+  }, [isMarketOpenNow, buddyState.buddyEnabled]);
+
+  // Feed DEGRADED -> healthy transition chatter
+  useEffect(() => {
+    const degraded = health?.status === 'DEGRADED';
+    if (buddyState.buddyEnabled && degraded && !wasDegradedRef.current) {
+      announce('degraded');
+    }
+    wasDegradedRef.current = degraded;
+  }, [health?.status, buddyState.buddyEnabled]);
+
+  // Random idle chatter while the tape is live, market is open, tab visible
+  useEffect(() => {
+    let timeout = null;
+    let cancelled = false;
+
+    const schedule = () => {
+      if (cancelled) return;
+      const [min, max] = getChatterRange();
+      const minMs = Math.max(min, 45) * 1000;
+      const maxMs = Math.max(max, minMs + 15000) * 1000;
+      timeout = setTimeout(() => {
+        const settings = getBuddySettings();
+        const hasPrice = typeof marketData?.goldSpot?.price === 'number';
+        if (
+          settings.buddyEnabled && settings.chatterEnabled &&
+          !document.hidden && liveRef.current && hasPrice && isMarketOpenNow()
+        ) {
+          announce('idle');
+        }
+        schedule();
+      }, Math.floor(minMs + Math.random() * (maxMs - minMs)));
+    };
+
+    if (buddyState.buddyEnabled) schedule();
+    return () => { cancelled = true; if (timeout) clearTimeout(timeout); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buddyState.buddyEnabled]);
+
   // Manual Trigger: Sync all market data
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -364,6 +480,9 @@ export default function App() {
         onRefresh={handleManualRefresh}
         voiceEnabled={voiceConfig.enabled}
         onToggleVoice={handleToggleVoice}
+        buddyChar={buddyChar}
+        buddyEnabled={buddyState.buddyEnabled}
+        onCycleBuddy={cycleBuddy}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPriceAlerts={() => setIsPriceAlertsOpen(true)}
       />
@@ -480,7 +599,7 @@ export default function App() {
       {/* Terminal Settings & Dispatch Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => { setIsSettingsOpen(false); resyncBuddy(); }}
         onSettingsUpdated={(newVoice) => {
           if (newVoice) setVoiceConfig({ ...newVoice });
         }}
