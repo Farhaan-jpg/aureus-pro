@@ -183,6 +183,16 @@ export function consumeDivergenceChange() {
   return null;
 }
 
+// ── Disk persistence (boot-restore / periodic save) ─────────────────────
+export function serializeForDisk() {
+  return { series: buckets };
+}
+export function loadFromDisk(data) {
+  if (data?.series && typeof data.series === 'object') {
+    Object.assign(buckets, data.series);
+  }
+}
+
 // ── Combined realtime pulse snapshot ────────────────────────────────────
 export function snapshot() {
   const goldCloses = getSeriesCloses('GOLD');

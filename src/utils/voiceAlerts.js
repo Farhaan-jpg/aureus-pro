@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = {
     biasFlips: true,
     handleSweeps: true,
     sirens: true,
-    eventActuals: true
+    eventActuals: true,
+    levelAlerts: true
   }
 };
 
@@ -29,7 +30,8 @@ const COOLDOWN_WINDOW = {
   biasFlips: 90 * 1000,
   handleSweeps: 90 * 1000,
   sirens: 60 * 1000,
-  eventActuals: 60 * 1000
+  eventActuals: 60 * 1000,
+  levelAlerts: 90 * 1000
 };
 const lastSpokenAt = new Map();
 
@@ -308,5 +310,14 @@ export function speakSurprise(eventTitle, direction, magnitude) {
   if (withinCooldown('eventActuals', `${eventTitle}|${direction}`)) return;
   if (announce('eventActual', { event: eventTitle, direction, magnitude })) return;
   speakAlert(`Economic data released: ${eventTitle} surprised to the ${direction} side. ${magnitude} move expected.`);
+}
+
+// 9. Key-Level Auto Alert (PDH/PDL, Pivot R1/S1, Asian hi/lo tagged)
+export function speakLevelAlert(side, label, price) {
+  if (!currentSettings.enabled || !currentSettings.alertEvents?.levelAlerts) return;
+  if (withinCooldown('levelAlerts', `${label}|${side}|${Math.round(price)}`)) return;
+  if (announce('levelAlert', { side, label, price })) return;
+  const sideText = side === 'UP' ? 'tagged upside' : 'tagged downside';
+  speakAlert(`Level alert: ${label} ${sideText} at ${price} dollars.`);
 }
 

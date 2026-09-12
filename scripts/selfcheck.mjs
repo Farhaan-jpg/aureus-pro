@@ -87,6 +87,18 @@ try {
 
   const sirens = await (await fetch(`${base}/api/sirens`)).json();
   check('sirens endpoint responds', sirens && Array.isArray(sirens?.history), `history=${sirens?.history?.length ?? 0} active=${Object.keys(sirens?.active || {}).length}`);
+
+  const nc = await (await fetch(`${base}/api/nowcast`)).json();
+  check('nowcast responds with a thesis', nc && typeof nc.headline === 'string', `stance=${nc?.stance?.label ?? '—'}`);
+
+  const ro = await (await fetch(`${base}/api/risk-off`)).json();
+  check('risk-off responds with a level', ['NONE', 'CAUTION', 'ADVISORY'].includes(ro?.level), `level=${ro?.level} drivers=${ro?.drivers?.length ?? 0}`);
+
+  const nl = await (await fetch(`${base}/api/news-lockout`)).json();
+  check('news-lockout responds with active flag', typeof nl?.active === 'boolean', `active=${nl?.active} event=${nl?.event?.title ?? '—'}`);
+
+  const la = await (await fetch(`${base}/api/level-alerts`)).json();
+  check('level-alerts responds with alert list', Array.isArray(la?.alerts), `alerts=${la?.alerts?.length ?? 0}`);
 } catch (err) {
   console.log(`FAIL  ${err.message}`);
   failures++;

@@ -1,7 +1,8 @@
-import React from 'react';
-import { Gauge, ShieldCheck, Zap, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { Gauge, ShieldCheck, Zap, Info, ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function CompositeBiasMeter({ bias }) {
+  const [expandedRow, setExpandedRow] = useState(null);
   const actionable = bias?.actionable !== false;
   const score = bias?.score ?? 0;
   const label = bias?.label ?? 'NEUTRAL';
@@ -17,7 +18,16 @@ export default function CompositeBiasMeter({ bias }) {
     etf: 0,
     geo: 0,
     structure: 0,
-    trend: 0
+    trend: 0,
+    centralBank: 0
+  };
+  const weights = bias?.weights || {};
+  const drivers = bias?.drivers || {};
+
+  const wPct = (k) => {
+    const w = weights[k];
+    if (typeof w === 'number') return `${(w * 100).toFixed(0)}%`;
+    return String(w ?? '—');
   };
 
   // Convert -100..+100 to angle in degrees (-90deg to +90deg for semi-circle)
@@ -32,21 +42,22 @@ export default function CompositeBiasMeter({ bias }) {
     'STRONG SELL': { text: 'text-rose-400', bg: 'bg-rose-950/60', border: 'border-rose-700/60', glow: 'glow-red' },
   };
 
-  const currentTheme = colorConfig[label] || colorConfig.NEUTRAL;
-
   const factors = [
-    { name: 'Macro (DXY / real yield)', weight: '14%', value: breakdown.macro ?? 0 },
-    { name: 'Price structure / key levels', weight: '10%', value: breakdown.structure ?? 0 },
-    { name: 'Multi-TF trend alignment', weight: '10%', value: breakdown.trend ?? 0 },
-    { name: 'Metals & GSR', weight: '8%', value: breakdown.commodity ?? 0 },
-    { name: 'VIX / risk-off', weight: '10%', value: breakdown.volatility ?? 0 },
-    { name: 'News', weight: '12%', value: breakdown.news ?? 0 },
-    { name: 'Asian range / ICT', weight: '8%', value: breakdown.ictSweeps ?? 0 },
-    { name: 'CFTC COT', weight: '8%', value: breakdown.cot ?? 0 },
-    { name: 'Gold ETF tape', weight: '8%', value: breakdown.etf ?? 0 },
-    { name: 'Retail / small traders', weight: '6%', value: breakdown.retail ?? 0 },
-    { name: 'Geopolitics (GDELT)', weight: '6%', value: breakdown.geo ?? 0 },
+    { key: 'macro', name: 'Macro (DXY / real yield)' },
+    { key: 'structure', name: 'Price structure / key levels' },
+    { key: 'trend', name: 'Multi-TF trend alignment' },
+    { key: 'commodity', name: 'Metals & GSR' },
+    { key: 'volatility', name: 'VIX / risk-off' },
+    { key: 'news', name: 'News' },
+    { key: 'ictSweeps', name: 'Asian range / ICT' },
+    { key: 'cot', name: 'CFTC COT' },
+    { key: 'etf', name: 'Gold ETF tape' },
+    { key: 'retail', name: 'Retail / small traders' },
+    { key: 'geo', name: 'Geopolitics (GDELT)' },
+    { key: 'centralBank', name: 'Central bank watch' },
   ];
+
+  const currentTheme = colorConfig[label] || colorConfig.NEUTRAL;
 
   return (
     <div className="hud-panel p-4 flex flex-col justify-between h-full">
@@ -152,38 +163,62 @@ export default function CompositeBiasMeter({ bias }) {
         </div>
       </div>
 
-      {/* 7-Pillar Institutional Weighted Algorithm Breakdown */}
+      {/* 12-Channel Institutional Weighted Algorithm Breakdown */}
       <div className="mt-3 pt-2 border-t border-white/5">
         <span className="text-[10px] font-mono text-slate-400 font-semibold tracking-wider uppercase block mb-1">
-          7-Pillar Institutional Breakdown
+          12-Channel Institutional Breakdown — tap a channel for "why"
         </span>
-        <div className="max-h-[175px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
-        {factors.map((f, i) => {
-          const val = f.value;
+        <div className="max-h-[230px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+        {factors.map((f) => {
+          const val = breakdown[f.key] ?? 0;
           const isPositive = val >= 0;
+          const isOpen = expandedRow === f.key;
+          const why = drivers[f.key];
           return (
-            <div key={i} className="text-[11px] font-mono">
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="text-slate-400 truncate max-w-[200px]">
-                  {f.name} <span className="text-gold-400/80">({f.weight})</span>
-                </span>
-                <span className={`font-bold tabular-nums ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {isPositive ? `+${val}` : val}
-                </span>
-              </div>
-              {/* Factor mini bar */}
-              <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden relative mt-0.5 border border-white/5">
-                <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-slate-600" />
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    isPositive ? 'bg-emerald-400' : 'bg-rose-400'
-                  }`}
-                  style={{
-                    width: `${Math.abs(val) / 2}%`,
-                    marginLeft: isPositive ? '50%' : `${50 - Math.abs(val) / 2}%`
-                  }}
-                />
-              </div>
+            <div key={f.key}>
+              <button
+                type="button"
+                onClick={() => setExpandedRow(isOpen ? null : f.key)}
+                className={`w-full text-left text-[11px] font-mono rounded transition ${why ? 'cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-2 text-slate-300">
+                  <span className="flex items-center gap-1 min-w-0">
+                    {why ? (
+                      isOpen
+                        ? <ChevronDown className="w-3 h-3 text-gold-400 shrink-0" />
+                        : <ChevronRight className="w-3 h-3 text-gold-400 shrink-0" />
+                    ) : (
+                      <span className="w-3" />
+                    )}
+                    <span className="text-slate-400 truncate">{f.name}</span>
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-gold-400/80">{wPct(f.key)}</span>
+                    <span className={`font-bold tabular-nums ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {isPositive ? `+${val}` : val}
+                    </span>
+                  </span>
+                </div>
+                {/* Factor mini bar */}
+                <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden relative mt-0.5 border border-white/5">
+                  <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-slate-600" />
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isPositive ? 'bg-emerald-400' : 'bg-rose-400'
+                    }`}
+                    style={{
+                      width: `${Math.abs(val) / 2}%`,
+                      marginLeft: isPositive ? '50%' : `${50 - Math.abs(val) / 2}%`
+                    }}
+                  />
+                </div>
+              </button>
+              {why && isOpen && (
+                <div className="mt-1 ml-3 px-2.5 py-1.5 rounded bg-gold-950/30 border border-gold-500/20 text-[10px] font-mono text-slate-300 leading-snug">
+                  <Zap className="w-3 h-3 text-gold-400 inline mr-1 -mt-0.5" />
+                  {why}
+                </div>
+              )}
             </div>
           );
         })}

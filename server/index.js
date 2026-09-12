@@ -6,6 +6,8 @@ import { config } from './config.js';
 import apiRouter from './routes/api.js';
 import { sseHandler, getClientCount } from './routes/sse.js';
 import { startBackgroundWorker } from './services/cronWorker.js';
+import { loadStateFromDisk, persistStateToDisk } from './services/realtimeState.js';
+import { startTelegramCommandPoller, stopTelegramCommandPoller } from './services/telegramBot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,13 +77,22 @@ const server = app.listen(config.port, () => {
   }
   console.log(`=======================================================`);
 
+  // Restore series + siren state across restarts (crash-safe: never throws).
+  loadStateFromDisk();
+
   // Start background worker for cron tasks & live broadcasting
   startBackgroundWorker();
+
+  // Telegram interactive command poller (getUpdates) — enabled only when a
+  // token + chatId are configured in Settings.
+  startTelegramCommandPoller();
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received. Shutting down Aureus Pro...');
+  stopTelegramCommandPoller();
+  persistStateToDisk();
   server.close(() => {
     console.log('Http server closed.');
     process.exit(0);

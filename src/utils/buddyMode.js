@@ -553,6 +553,10 @@ const FALLBACK_BANK = {
   eventActual: [
     'Economic data released: {event} printed {direction} versus expectations. Expect the tape to reprice.',
     'Actuals are in for {event}. Surprise direction {direction}.'
+  ],
+  levelAlert: [
+    'Key level tagged. {label} {side} at {price}. Gold is testing institutional order points.',
+    'Watch the auction. {label} probed {side} near {price}.'
   ]
 };
 
@@ -582,7 +586,7 @@ export function announce(kind, vars = {}, opts = {}) {
   const line = lineFor(char, kind, vars);
   if (!line) return false;
   if (kind === 'idle' && typeof window !== 'undefined' && window.speechSynthesis?.speaking) return false;
-  const alertKinds = ['biasFlip', 'breakingNews', 'redFolder', 'sweep', 'marketOpen', 'marketClosed', 'siren', 'eventActual'];
+  const alertKinds = ['biasFlip', 'breakingNews', 'redFolder', 'sweep', 'marketOpen', 'marketClosed', 'siren', 'eventActual', 'levelAlert'];
   speakAlert(line, {
     pitch: char.pitch,
     rate: char.rate,

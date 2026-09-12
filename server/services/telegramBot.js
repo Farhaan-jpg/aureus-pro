@@ -3,6 +3,23 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getCachedMarketData } from './marketData.js';
+import { getCachedNews } from './rssNews.js';
+import { classifyAllNews } from './sentimentEngine.js';
+import { getRetailSentiment } from './retailSentiment.js';
+import { calculateCompositeBias } from './compositeBias.js';
+import { getCotData } from './cotData.js';
+import { getGoldEtfFlows } from './goldEtfFlows.js';
+import { getGeoRisk } from './geoRisk.js';
+import { getTimeframeMatrix } from './timeframeMatrix.js';
+import { getCalibratedWeights } from './biasHistory.js';
+import { refreshCentralBankWatch } from './centralBank.js';
+import { snapshot as pulseSnapshot } from './seriesEngine.js';
+import { getNewsCredibility } from './newsFeedback.js';
+import { getNowcast } from './nowcast.js';
+import { getSessionRecap } from './sessionRecap.js';
+import { getLevelAlerts } from './levelAlerts.js';
+import { getRecentErrors } from './errorLog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -292,5 +309,125 @@ ${catLines}
 `.trim();
 
   return await sendTelegramMessage(message);
+}
+
+// ── Interactive command queries (getUpdates polling) ──────────────────────
+// Turns the same bot token into an on-demand query surface: /bias /pulse
+// /levels /sig /recap /errors. Commands are only honoured from the configured
+// chatId. Runs off getUpdates long-polling, so no public webhook URL is needed.
+const COMMAND_POLL_MS = 8000;
+let lastUpdateOffset = 0;
+let commandPoller = null;
+let pollingErrorShown = false;
+
+function currentBias() {
+  const md = getCachedMarketData();
+  if (!md?.assets) return null;
+  const classifiedNews = classifyAllNews(getCachedNews());
+  return calculateCompositeBias(md, classifiedNews, getRetailSentiment(md.goldSpot?.price || null), {
+    cot: getCotData(),
+    etf: getGoldEtfFlows(),
+    geo: getGeoRisk(),
+    timeframes: getTimeframeMatrix(),
+    centralBank: refreshCentralBankWatch(classifiedNews),
+    calibratedWeights: getCalibratedWeights(md.session),
+    realtimePulse: pulseSnapshot(),
+    newsCredibility: getNewsCredibility()
+  });
+}
+
+function fmtPrice(v) {
+  return v == null ? '—' : `$${Number(v).toFixed(2)}`;
+}
+
+export function handleCommand(text) {
+  const cmd = String(text || '').trim().toLowerCase().split(/\s+/)[0];
+  const bias = currentBias();
+  const price = getCachedMarketData()?.goldSpot?.price;
+
+  switch (cmd) {
+    case '/bias': {
+      if (!bias) return 'Bias model warming up — market data not loaded yet.';
+      const dirs = Object.entries(bias.breakdown || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
+      const dirLines = dirs.map(([k, v]) => `• ${k}: ${v > 0 ? '+' : ''}${v}`).join('\n');
+      return `🧭 <b>Composite Bias:</b> <b>${bias.label.toUpperCase()}</b> (${bias.score > 0 ? '+' : ''}${bias.score}/100) · conf ${bias.confidence}%\n<b>Gold:</b> ${fmtPrice(price)}\nTop channels:\n${dirLines}\n<i>Actionable: ${bias.actionable ? 'YES' : 'NO (market closed / tape stale)'}</i>`;
+    }
+    case '/pulse': {
+      const p = pulseSnapshot();
+      if (!p?.live) return '5m pulse warming up — streaming series needs ~20 recent bars.';
+      return `⚡ <b>Realtime Pulse:</b> ${p.live ? 'LIVE' : 'OFFLINE'}\n<b>RSI(14):</b> ${p.rsi14 ?? '—'} · <b>ATR pct:</b> ${p.atr14Percentile != null ? Math.round(p.atr14Percentile) + '%' : '—'}\n<b>Vol state:</b> ${p.volState || '—'}\n<b>Divergence:</b> ${p.divergence?.type || 'NONE'}${p.corr?.broken ? ' · ⚠ GOLD/DXY corr BROKEN' : ''}\n<b>Bars:</b> ${p.builds?.GOLD ?? 0} (GOLD)`;
+    }
+    case '/levels': {
+      const md = getCachedMarketData();
+      const lv = md?.keyLevels?.levels || {};
+      const piv = lv.pivots || {};
+      const ar = md?.asianRange || {};
+      return `🔑 <b>Key Levels:</b>\nPDH <b>$${(lv.pdh ?? 0).toFixed(0)}</b> · PDL <b>$${(lv.pdl ?? 0).toFixed(0)}</b>\nPWH <b>$${(lv.pwh ?? 0).toFixed(0)}</b> · PWL <b>$${(lv.pwl ?? 0).toFixed(0)}</b>\nPivot: R1 <b>$${(piv.r1 ?? 0).toFixed(0)}</b> / S1 <b>$${(piv.s1 ?? 0).toFixed(0)}</b>\nAsian: H <b>$${(ar.high ?? 0).toFixed(0)}</b> / L <b>$${(ar.low ?? 0).toFixed(0)}</b>\n<b>Spot:</b> ${fmtPrice(price)}`;
+    }
+    case '/sig': {
+      const n = getNowcast();
+      return n ? `📡 <b>NowCast Thesis:</b>\n${n.headline}` : 'NowCast not built yet — returning shortly.';
+    }
+    case '/recap': {
+      const r = getSessionRecap();
+      return r?.summaryText ? `📋 <b>Session Recap:</b>\n${r.summaryText}` : 'No recap yet — built at session close.';
+    }
+    case '/errors': {
+      const errs = getRecentErrors(5);
+      return errs.length
+        ? `⚠️ <b>Recent errors:</b>\n${errs.map((e) => `• [${e.source}] ${e.message?.slice(0, 90)}`).join('\n')}`
+        : '✅ No recent background errors.';
+    }
+    case '/help':
+    default:
+      return `🤖 <b>Aureus Pro commands:</b>\n/bias — composite bias + top channels\n/pulse — 5m realtime pulse (RSI/ATR/div/corr)\n/levels — PDH/PDL, pivots, Asian range\n/sig — NowCast thesis paragraph\n/recap — latest session recap\n/errors — recent background errors\n/help — this menu`;
+  }
+}
+
+async function processUpdate(update) {
+  const msg = update.message || update.edited_message;
+  if (!msg?.text || !msg.from) return;
+  const chatId = String(msg.chat.id);
+  if (botConfig.chatId && chatId !== String(botConfig.chatId)) return; // auth: configured channel only
+  const text = String(msg.text).trim();
+  if (!text.startsWith('/')) return;
+  const reply = handleCommand(text);
+  if (reply) {
+    await sendTelegramMessage(reply, botConfig.botToken, chatId);
+  }
+}
+
+async function pollTelegramCommands() {
+  if (!botConfig.enabled || !botConfig.botToken || !botConfig.chatId) return;
+  try {
+    const url = `https://api.telegram.org/bot${botConfig.botToken}/getUpdates?timeout=25&limit=10&offset=${lastUpdateOffset}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      if (json.description && /409|conflict/i.test(json.description) && !pollingErrorShown) {
+        pollingErrorShown = true;
+        console.warn('[Telegram] getUpdates failed — a webhook may be set. Interactive commands disabled:', json.description);
+      }
+      return;
+    }
+    pollingErrorShown = false;
+    const updates = json.result || [];
+    for (const u of updates) {
+      lastUpdateOffset = Math.max(lastUpdateOffset, (u.update_id || 0) + 1);
+      try { await processUpdate(u); } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+export function startTelegramCommandPoller() {
+  if (commandPoller || !botConfig.botToken || !botConfig.chatId) return;
+  commandPoller = setInterval(() => { pollTelegramCommands().catch(() => {}); }, COMMAND_POLL_MS);
+}
+
+export function stopTelegramCommandPoller() {
+  if (commandPoller) {
+    clearInterval(commandPoller);
+    commandPoller = null;
+  }
 }
 

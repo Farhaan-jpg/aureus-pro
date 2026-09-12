@@ -20,13 +20,17 @@ import { getMarketState } from '../services/marketState.js';
 import { getRecentErrors, clearErrors } from '../services/errorLog.js';
 import { getClientCount } from './sse.js';
 import { getBiasAccuracy, getCalibratedWeights, getChannelAccuracy } from '../services/biasHistory.js';
-import { refreshCentralBankWatch } from '../services/centralBank.js';
+import { refreshCentralBankWatch, getCentralBankWatch } from '../services/centralBank.js';
 import { getPushConfig, saveSubscription, removeSubscription, sendPush } from '../services/webPush.js';
 import { getSessionRecap } from '../services/sessionRecap.js';
 import { snapshot as getRealtimePulse } from '../services/seriesEngine.js';
 import { getNewsAccuracy, getNewsCredibility } from '../services/newsFeedback.js';
 import { getFeedSla } from '../services/feedSla.js';
 import { getSirenHistory, getActiveFactors } from '../services/confluenceSirens.js';
+import { getNowcast, buildNowcast } from '../services/nowcast.js';
+import { getRiskOff } from '../services/riskOff.js';
+import { getNewsLockout } from '../services/newsLockout.js';
+import { getLevelAlerts } from '../services/levelAlerts.js';
 
 const router = Router();
 
@@ -321,6 +325,36 @@ router.get('/feed-sla', (req, res) => {
 
 router.get('/sirens', (req, res) => {
   res.json({ history: getSirenHistory(), active: getActiveFactors() });
+});
+
+router.get('/nowcast', (req, res) => {
+  let thesis = getNowcast();
+  if (!thesis) {
+    // Build on demand so the panel paints once the first cached frame exists
+    // (the worker normally rebuilds it every refresh cycle).
+    const md = getCachedMarketData();
+    const retail = getRetailSentiment();
+    const news = getCachedNews();
+    const bias = calculateCompositeBias(md, news, retail && retail.data, {
+      calibratedWeights: getCalibratedWeights(),
+      centralBankData: getCentralBankWatch(),
+      cot: getCotData()
+    });
+    thesis = buildNowcast(bias, md);
+  }
+  res.json(thesis);
+});
+
+router.get('/risk-off', (req, res) => {
+  res.json(getRiskOff());
+});
+
+router.get('/news-lockout', (req, res) => {
+  res.json(getNewsLockout());
+});
+
+router.get('/level-alerts', (req, res) => {
+  res.json({ alerts: getLevelAlerts(12) });
 });
 
 // ── Session Recap ────────────────────────────────────────────────────────

@@ -24,10 +24,19 @@ function PivotRow({ name, value, hi }) {
   );
 }
 
-export default function KeyLevelsPanel({ marketData }) {
+export default function KeyLevelsPanel({ marketData, levelAlerts }) {
   const levels = marketData?.keyLevels?.levels || {};
   const current = marketData?.keyLevels?.current || {};
   const currentPrice = marketData?.goldSpot?.price;
+  const alerts = Array.isArray(levelAlerts) ? levelAlerts : [];
+
+  const fmtTime = (iso) => {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return '';
+    }
+  };
 
   const referencesUp = [
     { name: 'R2', v: levels.pivots?.r2 },
@@ -136,6 +145,38 @@ export default function KeyLevelsPanel({ marketData }) {
           GC=F daily/weekly pivots
         </span>
       </div>
+
+      {/* Recent key-level auto alerts */}
+      {alerts.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-white/5">
+          <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block mb-1.5">
+            Auto Level Alerts — {alerts.length} recent
+          </span>
+          <div className="max-h-[110px] overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+            {alerts.map((a) => (
+              <div
+                key={a.firedAt + a.key}
+                className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-[#0b0e15] border border-white/5 text-[10px] font-mono"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`shrink-0 font-bold ${a.side === 'ABOVE' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {a.side === 'ABOVE' ? '▲' : '▼'}
+                  </span>
+                  <span className="text-slate-300 truncate">{a.label}</span>
+                  <span className="text-slate-500">${Number(a.level).toFixed(0)}</span>
+                </span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className={`${a.side === 'ABOVE' ? 'text-emerald-400' : 'text-rose-400'} font-bold tabular-nums`}>
+                    {a.side}
+                  </span>
+                  <span className="text-slate-500 tabular-nums">{Math.abs(a.distancePct ?? 0).toFixed(2)}%</span>
+                  <span className="text-slate-600 tabular-nums">{fmtTime(a.firedAt)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

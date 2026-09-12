@@ -20,6 +20,8 @@ import KeyLevelsPanel from './components/KeyLevelsPanel';
 import VolatilityRegimePanel from './components/VolatilityRegimePanel';
 import RealtimePulsePanel from './components/RealtimePulsePanel';
 import SirenBanner from './components/SirenBanner';
+import NowcastPanel from './components/NowcastPanel';
+import NewsLockoutBanner from './components/NewsLockoutBanner';
 import {
   getVoiceSettings,
   saveVoiceSettings,
@@ -28,7 +30,8 @@ import {
   speakBreakingNews,
   speakHandleSweep,
   speakSiren,
-  speakSurprise
+  speakSurprise,
+  speakLevelAlert
 } from './utils/voiceAlerts';
 import {
   getBuddySettings,
@@ -57,6 +60,10 @@ export default function App() {
   const [sessionRecap, setSessionRecap] = useState(null);
   const [realtimePulse, setRealtimePulse] = useState(null);
   const [siren, setSiren] = useState(null);
+  const [nowCast, setNowCast] = useState(null);
+  const [riskOff, setRiskOff] = useState(null);
+  const [newsLockout, setNewsLockout] = useState(null);
+  const [levelAlerts, setLevelAlerts] = useState([]);
 
   const [isLive, setIsLive] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -177,7 +184,11 @@ export default function App() {
       ['geo-risk', (d) => { if (d) setGeo(d); }],
       ['etf-flows', (d) => { if (d) setEtf(d); }],
       ['timeframes', (d) => { if (d) setTimeframes(d); }],
-      ['realtime-pulse', (d) => { if (d) setRealtimePulse(d); }]
+      ['realtime-pulse', (d) => { if (d) setRealtimePulse(d); }],
+      ['nowcast', (d) => { if (d) setNowCast(d); }],
+      ['risk-off', (d) => { if (d) setRiskOff(d); }],
+      ['news-lockout', (d) => { if (d) setNewsLockout(d); }],
+      ['level-alerts', (d) => { if (Array.isArray(d?.alerts)) setLevelAlerts(d.alerts); }]
     ];
     for (const [path, apply] of endpoints) {
       fetch(`/api/${path}`)
@@ -281,6 +292,10 @@ export default function App() {
           if (data.timeframes) setTimeframes(data.timeframes);
           if (data.geo) setGeo(data.geo);
           if (data.etf) setEtf(data.etf);
+          if (data.nowCast) setNowCast(data.nowCast);
+          if (data.riskOff) setRiskOff(data.riskOff);
+          if (data.newsLockout) setNewsLockout(data.newsLockout);
+          if (Array.isArray(data.levelAlerts)) setLevelAlerts(data.levelAlerts);
         } catch (err) {}
       });
 
@@ -301,11 +316,41 @@ export default function App() {
       eventSource.addEventListener('SIREN', (e) => {
         try {
           const data = JSON.parse(e.data);
-          if (data?.foundAt) {
+          if (data?.id && data?.firedAt) {
             setSiren(data);
-            const dir = data.bullish ? 'BULLISH' : data.bearish ? 'BEARISH' : 'FLIP';
             const price = Number(data.price) || 0;
-            speakSiren(dir, price, data.factorCount || data.factors?.length || 0);
+            speakSiren(data.direction || 'UNKNOWN', price, data.factorCount || data.factors?.length || 0);
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('NOWCAST', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data) setNowCast(data);
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('RISK_ADVISORY', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data?.level) setRiskOff(data);
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('NEWS_LOCKOUT', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data) setNewsLockout(data);
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('LEVEL_ALERT', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data?.key && data?.firedAt) {
+            setLevelAlerts((prev) => [data, ...prev].slice(0, 12));
+            speakLevelAlert(data.side, data.label, data.current);
           }
         } catch (err) {}
       });
@@ -549,7 +594,8 @@ export default function App() {
         </div>
       )}
 
-      <div className="px-3 lg:px-4 pt-1">
+      <div className="px-3 lg:px-4 pt-1 space-y-2">
+        <NewsLockoutBanner lockout={newsLockout} />
         <SirenBanner siren={siren} onDismiss={() => setSiren(null)} />
       </div>
 
@@ -575,9 +621,13 @@ export default function App() {
         </section>
 
         <section className={`anim-panel ${vis('live')}`} style={stagger(1)}>
+          <NowcastPanel thesis={nowCast} riskOff={riskOff} />
+        </section>
+
+        <section className={`anim-panel ${vis('live')}`} style={stagger(2)}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
             <div className="lg:col-span-7 flex flex-col h-full">
-              <KeyLevelsPanel marketData={marketData} />
+              <KeyLevelsPanel marketData={marketData} levelAlerts={levelAlerts} />
             </div>
             <div className="lg:col-span-5 flex flex-col h-full">
               <VolatilityRegimePanel marketData={marketData} />
@@ -585,7 +635,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className={`anim-panel ${vis('live')}`} style={stagger(2)}>
+        <section className={`anim-panel ${vis('live')}`} style={stagger(3)}>
           <MultiTimeframeMatrix
             matrix={timeframes}
             currentPrice={marketData?.goldSpot?.price}
@@ -593,16 +643,16 @@ export default function App() {
           />
         </section>
 
-        <section className={`anim-panel ${vis('live')}`} style={stagger(3)}>
+        <section className={`anim-panel ${vis('live')}`} style={stagger(4)}>
           <RealtimePulsePanel pulse={realtimePulse} />
         </section>
 
         {/* ── MACRO: correlated assets + fundamentals ───────────────────── */}
-        <section className={`anim-panel ${vis('macro')}`} style={stagger(4)}>
+        <section className={`anim-panel ${vis('macro')}`} style={stagger(5)}>
           <MacroDriversGrid marketData={marketData} />
         </section>
 
-        <section className={`anim-panel ${vis('macro')}`} style={stagger(5)}>
+        <section className={`anim-panel ${vis('macro')}`} style={stagger(6)}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
             <div className="flex flex-col h-full"><CotReportGauge /></div>
             <div className="flex flex-col h-full"><SeasonalityPanel /></div>
@@ -612,7 +662,7 @@ export default function App() {
         </section>
 
         {/* ── FLOW: sentiment + sessions + news ─────────────────────────── */}
-        <section className={`anim-panel ${vis('flow')}`} style={stagger(6)}>
+        <section className={`anim-panel ${vis('flow')}`} style={stagger(7)}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
             <div className="lg:col-span-5 flex flex-col h-full">
               <OrderBookSentiment
@@ -626,7 +676,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className={`anim-panel ${vis('news')}`} style={stagger(7)}>
+        <section className={`anim-panel ${vis('news')}`} style={stagger(8)}>
           {sessionRecap && (
             <div className="mb-3">
               <SessionRecapPanel recap={sessionRecap} />
@@ -636,7 +686,7 @@ export default function App() {
         </section>
 
         {/* ── DATA: calendar + integrity ────────────────────────────────── */}
-        <section className={`anim-panel ${vis('data')}`} style={stagger(8)}>
+        <section className={`anim-panel ${vis('data')}`} style={stagger(9)}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
             <div className="lg:col-span-7 flex flex-col h-full">
               <EconomicCalendar calendarData={calendar} />

@@ -242,6 +242,58 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   else if (finalScore <= -55) label = 'STRONG SELL';
   else if (finalScore <= -20) label = 'SELL';
 
+  // ── Per-channel drivers: why each channel reads what it reads ──────────
+  // Built post-hoc from the same inputs so the rationale the operator sees
+  // always matches the math (no separate state to drift).
+  const drivers = {
+    macro: [],
+    commodity: [],
+    volatility: [],
+    ictSweeps: [],
+    cot: [],
+    retail: [],
+    news: [],
+    etf: [],
+    geo: [],
+    structure: [],
+    trend: [],
+    centralBank: []
+  };
+  if (dxyChange != null) drivers.macro.push(`DXY ${dxyChange >= 0 ? '+' : ''}${dxyChange}% ${dxyChange >= 0 ? 'headwind' : 'tailwind'}`);
+  if (realYield != null) drivers.macro.push(`real yield ${realYield}% ${realYield >= 1.6 ? 'elevated' : realYield <= 1.4 ? 'supportive' : 'neutral'}`);
+  if (yieldCurve != null) drivers.macro.push(`curve ${yieldCurve >= 0 ? '+' : ''}${yieldCurve} ${yieldCurve < 0 ? 'inverted → safe-haven' : yieldCurve > 0.5 ? 'steep → headwind' : 'flat'}`);
+  if (silverChange != null) drivers.commodity.push(`silver ${silverChange >= 0 ? '+' : ''}${silverChange}% ${silverChange >= 0 ? 'confirming' : 'dragging'}`);
+  if (gsr != null) drivers.commodity.push(`GSR ${gsr} ${gsr < 70 ? 'gold demanding premium' : gsr > 90 ? 'silver capped' : 'neutral'}`);
+  if (oilChange != null) drivers.commodity.push(`oil ${oilChange >= 0 ? '+' : ''}${oilChange}% ${oilChange >= 0 ? 'inflation bid' : 'cooling inflation'}`);
+  if (vix != null) drivers.volatility.push(`VIX ${vix}${vix >= 22 ? ' · stress bid' : vix <= 13 ? ' · complacency' : ''}`);
+  if (currentPrice != null && asianHigh != null && asianLow != null) drivers.ictSweeps.push(currentPrice < asianLow ? 'below Asian low — sweep target below' : currentPrice > asianHigh ? 'above Asian high — premium' : 'inside Asian range');
+  if (cotPercentile != null) drivers.cot.push(`managed-money 3y pct ${cotPercentile}${cotPercentile >= 85 ? ' · stretched long' : cotPercentile <= 25 ? ' · washed out' : ''}`);
+  if (retailLongPercent != null) drivers.retail.push(`retail ${retailLongPercent}% long → ${retailLongPercent >= 65 ? 'contrarian lean against the crowd' : retailLongPercent <= 35 ? 'crowd short — fade bias up' : 'balanced'}`);
+  for (const item of newsWindow.slice(0, 3)) {
+    if (item.sentiment !== 'BULLISH' && item.sentiment !== 'BEARISH') continue;
+    const c = (newsCredibility && item.source && newsCredibility[item.source]) || 1;
+    drivers.news.push(`${item.title.slice(0, 48)}${c !== 1 ? ` · src×${c.toFixed(2)}` : ''}`);
+  }
+  if (etf?.live && etf.goldEtfBias) drivers.etf.push(`ETF ${etf.goldEtfBias}${etf.minersConfirm ? ` · miners ${etf.minersConfirm === 'RISK_ON_MINERS' ? 'confirm' : etf.minersConfirm === 'MINERS_LAGGING' ? 'lag' : etf.minersConfirm.toLowerCase()}` : ''}`);
+  if (geo?.live && geo.score != null) drivers.geo.push(`geo risk ${geo.score}/100 · ${geo.avgTone ? `tone ${geo.avgTone.toFixed(2)}` : ''}`);
+  if (vreg?.live && vreg.compositePercentile != null) drivers.structure.push(`vol regime pct ${vreg.compositePercentile}${volRegimeFactor !== 0 ? ` · ${volRegimeFactor > 0 ? '+' : ''}${volRegimeFactor}` : ''}`);
+  if (longCorr?.live && longCorr.goldDxy != null) drivers.structure.push(`GOLD/DXY daily ${longCorr.goldDxy}${corrFactor !== 0 ? ` · ${corrFactor > 0 ? '+' : ''}${corrFactor}` : ''}`);
+  if (realtimePulse?.live) {
+    if (realtimePulse.divergence?.type === 'BEARISH') drivers.structure.push('5m BEARISH divergence');
+    else if (realtimePulse.divergence?.type === 'BULLISH') drivers.structure.push('5m BULLISH divergence');
+    if (realtimePulse.corr?.broken) drivers.structure.push('5m GOLD/DXY corr broken');
+    if (realtimePulse.volState === 'SQUEEZE') drivers.structure.push('vol SQUEEZE — expansion pending');
+    else if (realtimePulse.volState === 'EXPANSION') drivers.structure.push('vol EXPANSION — blow-off caution');
+  }
+  if (levels?.pivots && currentPrice != null) {
+    const rds = [levels.pdh, levels.pivots.r1, levels.pivots.r2, levels.pwh, levels.weekPivots?.r1, dailySwingHigh].filter((v) => v != null && v > currentPrice);
+    const sds = [levels.pdl, levels.pivots.s1, levels.pivots.s2, levels.pwl, levels.weekPivots?.s1, dailySwingLow].filter((v) => v != null && v < currentPrice);
+    if (rds.length) drivers.structure.push(`nearest resistance $${Math.min(...rds).toFixed(0)}`);
+    if (sds.length) drivers.structure.push(`nearest support $${Math.max(...sds).toFixed(0)}`);
+  }
+  if (timeframes?.live && timeframes.confluence) drivers.trend.push(`MTF alignment bull ${timeframes.confluence.bullPct}% / bear ${timeframes.confluence.bearPct}%`);
+  if (centralBankWatch?.watch?.live) drivers.centralBank.push(`${centralBankWatch.watch.headlines?.length || 0} official-sector headlines · score ${centralBankWatch.watch.score}`);
+
   const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore, trendSubScore, centralBankSubScore];
   const sameSign = subScores.filter((s) => (finalScore >= 0 ? s > 0 : s < 0)).length;
   const dataPoints = [
@@ -271,6 +323,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     label,
     confidence,
     actionable,
+    weights,
     breakdown: {
       macro: Math.round(macroSubScore),
       commodity: Math.round(commoditySubScore),
@@ -284,6 +337,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
       structure: Math.round(structureSubScore),
       trend: Math.round(trendSubScore),
       centralBank: Math.round(centralBankSubScore)
-    }
+    },
+    drivers
   };
 }

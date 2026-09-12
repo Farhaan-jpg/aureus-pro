@@ -13,6 +13,26 @@ let lastFiredKey = null;
 let lastFiredAt = 0;
 const history = []; // last 10 sirens
 
+// ── Disk persistence (boot-restore / periodic save) ─────────────────────
+export function serializeForDisk() {
+  return { active: [...active.entries()], lastFiredKey, lastFiredAt, history };
+}
+export function loadFromDisk(data) {
+  if (!data) return;
+  if (Array.isArray(data.active)) {
+    active.clear();
+    for (const [k, v] of data.active) {
+      if (v && typeof v.at === 'number') active.set(k, v);
+    }
+  }
+  if (typeof data.lastFiredKey === 'string') lastFiredKey = data.lastFiredKey;
+  if (typeof data.lastFiredAt === 'number') lastFiredAt = data.lastFiredAt;
+  if (Array.isArray(data.history)) {
+    history.length = 0;
+    history.push(...data.history.slice(-10));
+  }
+}
+
 export function note(factor, detail = '', price = null) {
   if (!factor) return;
   active.set(factor, { at: Date.now(), detail: String(detail).slice(0, 120), price });

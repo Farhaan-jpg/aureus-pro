@@ -27,10 +27,15 @@ import { refreshCentralBankWatch } from './centralBank.js';
 import { sendPush } from './webPush.js';
 import { buildSessionRecap } from './sessionRecap.js';
 import { bumpSeries, snapshot as pulseSnapshot, consumeDivergenceChange, getSeriesBars } from './seriesEngine.js';
-import { recordHeadline, resolveDueHeadlines, getNewsCredibility, getNewsAccuracy } from './newsFeedback.js';
+import { recordHeadline, resolveDueHeadlines, getNewsCredibility } from './newsFeedback.js';
 import { evaluateReleasedEvent } from './eventOutcomes.js';
 import { getFeedSla, noteTickBroadcast } from './feedSla.js';
 import * as sirens from './confluenceSirens.js';
+import { buildNowcast, changedSinceLastBroadcast, getNowcast } from './nowcast.js';
+import { computeNewsLockout, getNewsLockout } from './newsLockout.js';
+import { evaluateRiskOff, canEscape, getRiskOff } from './riskOff.js';
+import { checkLevelAlerts, getLevelAlerts } from './levelAlerts.js';
+import { persistStateToDisk } from './realtimeState.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -48,6 +53,9 @@ const degradedAlerts = new Set();
 
 let briefSentForDate = null;
 let broadcastInFlight = false;
+let lastLockoutActive = false;
+let lastStatePersistAt = 0;
+const PERSIST_EVERY_MS = 60000;
 
 function currentBias(marketData, classifiedNews, retail) {
   const centralBank = refreshCentralBankWatch(classifiedNews);
@@ -404,7 +412,24 @@ async function runRealtimeCycle(marketData, bias, retail) {
       sirens.clear('retailExtreme');
     }
 
-    const siren = sirens.evaluate(goldPrice);
+    // Red-folder lockout: even if factors align, anything within [release-5m,
+    // release+1m] of a HIGH/CRITICAL print is noise. Broadcast state changes;
+    // suppress siren firing entirely inside the window.
+    const lockout = computeNewsLockout();
+    if (lockout.active !== lastLockoutActive) {
+      lastLockoutActive = lockout.active;
+      broadcastToAll('NEWS_LOCKOUT', getNewsLockout());
+      if (lockout.active) {
+        sendPush({
+          title: `Red-folder lockout — ${lockout.event.title}`,
+          body: `HIGH-impact release ${lockout.event.title} (${lockout.event.currency}) imminent. Signals muted until +1m after print.`,
+          tag: `news-lockout-${lockout.event.date}`,
+          url: '/'
+        }, { ttl: 600, urgency: 'high' });
+      }
+    }
+
+    const siren = lockout.active ? null : sirens.evaluate(goldPrice);
     if (siren) {
       broadcastToAll('SIREN', siren);
       sendPush({
@@ -413,6 +438,43 @@ async function runRealtimeCycle(marketData, bias, retail) {
         tag: siren.id,
         url: '/'
       }, { ttl: 300, urgency: 'high' });
+    }
+
+    // Risk-off regime advisory: broadcast on transition (once per escalation),
+    // defensive note only — it never mutates the composite score.
+    const risk = evaluateRiskOff(marketData, pulseSnapshot());
+    if (canEscape()) {
+      broadcastToAll('RISK_ADVISORY', risk);
+      sendPush({
+        title: `Risk-off: ${risk.level}`,
+        body: risk.drivers.slice(0, 3).join(' · '),
+        tag: `risk-${risk.level}-${risk.since}`,
+        url: '/'
+      }, { ttl: 900, urgency: 'high' });
+    }
+
+    // Key-level proximity alerts (PDH/PDL, R1/S1, Asian range).
+    for (const hit of checkLevelAlerts(marketData)) {
+      broadcastToAll('LEVEL_ALERT', hit);
+      sendPush({
+        title: `${hit.side} ${hit.label} at $${Number(hit.current).toFixed(2)}`,
+        body: `Price within ${hit.distancePct}% of ${hit.label} ($${Number(hit.level).toFixed(0)}).`,
+        tag: `level-${hit.key}-${Math.floor(Date.now() / 2700000)}`,
+        url: '/'
+      }, { ttl: 600, urgency: 'high' });
+    }
+
+    // NowCast thesis: broadcast when the stance/headline materially changes so
+    // the client panel and Telegram /sig stay current without spamming.
+    buildNowcast(bias, marketData, pulseSnapshot());
+    if (changedSinceLastBroadcast()) {
+      broadcastToAll('NOWCAST', getNowcast());
+    }
+
+    // Periodic disk persistence of series + siren state (~60s debounce).
+    if (Date.now() - lastStatePersistAt > PERSIST_EVERY_MS) {
+      lastStatePersistAt = Date.now();
+      persistStateToDisk();
     }
 
     broadcastToAll('FEED_SLA', getFeedSla());
@@ -499,6 +561,9 @@ export async function refreshAndBroadcast() {
     const classifiedNews = classifyAllNews(rawNews);
     const retail = getRetailSentiment(marketData.goldSpot.price);
     const bias = currentBias(marketData, classifiedNews, retail);
+    computeNewsLockout();
+    evaluateRiskOff(marketData, pulseSnapshot());
+    buildNowcast(bias, marketData, pulseSnapshot());
     checkTelegramTriggers(marketData, bias, retail);
 
     const payload = {
@@ -510,6 +575,10 @@ export async function refreshAndBroadcast() {
       etf: getGoldEtfFlows(),
       geo: getGeoRisk(),
       timeframes: getTimeframeMatrix(),
+      nowCast: getNowcast(),
+      riskOff: getRiskOff(),
+      newsLockout: getNewsLockout(),
+      levelAlerts: getLevelAlerts(12),
       timestamp: new Date().toISOString()
     };
 

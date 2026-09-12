@@ -4,6 +4,9 @@ import { applyResolutions, recordHeadline, getNewsCredibility, getNewsAccuracy }
 
 describe('newsFeedback source credibility', () => {
   test('resolved BULLISH calls against a rising tape lift credibility', () => {
+    // The module persists stats to disk (server/data/news_feedback.json), so
+    // later runs carry prior TestWire rows. Assert the delta, not the total.
+    const before = getNewsAccuracy().sources.find((s) => s.source === 'TestWire');
     const fake = { source: 'TestWire', title: 'headline a', sentiment: 'BULLISH', score: 5 };
     for (let i = 0; i < 8; i++) {
       recordHeadline({ ...fake, title: `headline ${i}`, id: `t${i}` }, 100);
@@ -16,8 +19,8 @@ describe('newsFeedback source credibility', () => {
     const acc = getNewsAccuracy();
     const row = acc.sources.find((s) => s.source === 'TestWire');
     assert.ok(row);
-    assert.equal(row.hits, 8);
-    assert.equal(row.calls, 8);
+    assert.equal(row.hits - (before?.hits || 0), 8);
+    assert.equal(row.calls - (before?.calls || 0), 8);
     assert.equal(row.hitRate, 1);
     assert.equal(row.credibility, 1.5); // capped
   });
