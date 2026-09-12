@@ -39,7 +39,8 @@ function currentBias(marketData, classifiedNews, retail) {
   return calculateCompositeBias(marketData, classifiedNews, retail, {
     cot: getCotData(),
     etf: getGoldEtfFlows(),
-    geo: getGeoRisk()
+    geo: getGeoRisk(),
+    timeframes: getTimeframeMatrix()
   });
 }
 
@@ -179,6 +180,9 @@ async function checkTelegramTriggers(marketData, bias, retail) {
           const diffMins = Math.round(diffMs / 60000);
           if (diffMins > 0 && diffMins <= 5 && !alertedEventIds.has(ev.id)) {
             alertedEventIds.add(ev.id);
+            if (alertedEventIds.size > 200) {
+              alertedEventIds.delete(alertedEventIds.values().next().value); // keep dedupe bounded
+            }
             await sendRedFolderTelegramAlert(ev, diffMins, goldPrice);
           }
         }

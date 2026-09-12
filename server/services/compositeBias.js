@@ -12,7 +12,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     score: 0,
     label: 'NEUTRAL',
     confidence: 0,
-    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0, structure: 0 },
+    actionable: false,
+    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0, structure: 0, trend: 0 },
     used: []
   };
 
@@ -24,6 +25,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   const cotData = extras.cot || null;
   const etf = extras.etf || null;
   const geo = extras.geo || null;
+  const timeframes = extras.timeframes || null;
 
   const dxyChange = assets.DXY?.changePercent;
   const realYield = marketData.realYield10Y;
@@ -162,17 +164,25 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   structureSubScore += volRegimeFactor + corrFactor;
   structureSubScore = clamp(structureSubScore);
 
+  // ── Multi-timeframe trend alignment (EMA9/21 on 5M..1D) ──────────────
+  let trendSubScore = 0;
+  if (timeframes?.live && timeframes.confluence?.bullPct != null && timeframes.confluence?.bearPct != null) {
+    const net = timeframes.confluence.bullPct - timeframes.confluence.bearPct; // -100..+100
+    trendSubScore = clamp(Math.round(net * 0.85));
+  }
+
   const weights = {
-    macro: 0.16,
-    commodity: 0.10,
-    volatility: 0.12,
-    ictSweeps: 0.10,
+    macro: 0.14,
+    commodity: 0.08,
+    volatility: 0.10,
+    ictSweeps: 0.08,
     cot: 0.08,
     retail: 0.06,
     news: 0.12,
     etf: 0.08,
     geo: 0.06,
-    structure: 0.12
+    structure: 0.10,
+    trend: 0.10
   };
 
   const totalScore =
@@ -185,7 +195,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     newsSubScore * weights.news +
     etfSubScore * weights.etf +
     geoSubScore * weights.geo +
-    structureSubScore * weights.structure;
+    structureSubScore * weights.structure +
+    trendSubScore * weights.trend;
 
   const finalScore = Math.round(clamp(totalScore));
   let label = 'NEUTRAL';
@@ -194,7 +205,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   else if (finalScore <= -55) label = 'STRONG SELL';
   else if (finalScore <= -20) label = 'SELL';
 
-  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore];
+  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore, trendSubScore];
   const sameSign = subScores.filter((s) => (finalScore >= 0 ? s > 0 : s < 0)).length;
   const dataPoints = [
     dxyChange != null,
@@ -206,14 +217,22 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     newsCount > 0,
     structureSubScore !== 0,
     vreg?.live,
-    longCorr?.live
+    longCorr?.live,
+    timeframes?.live
   ].filter(Boolean).length;
   const confidence = Math.min(92, Math.max(20, Math.round(18 + dataPoints * 7 + (sameSign / subScores.length) * 28)));
+
+  // A score computed from a frozen Friday tape over the weekend is descriptive,
+  // not actionable — surface that so nothing gets acted on blindly.
+  const marketOpen = marketData.marketState?.open !== false;
+  const tapeFresh = gold.ageMs != null ? gold.ageMs < 30000 : currentPrice != null;
+  const actionable = Boolean(marketOpen && tapeFresh);
 
   return {
     score: finalScore,
     label,
     confidence,
+    actionable,
     breakdown: {
       macro: Math.round(macroSubScore),
       commodity: Math.round(commoditySubScore),
@@ -224,7 +243,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
       news: Math.round(newsSubScore),
       etf: Math.round(etfSubScore),
       geo: Math.round(geoSubScore),
-      structure: Math.round(structureSubScore)
+      structure: Math.round(structureSubScore),
+      trend: Math.round(trendSubScore)
     }
   };
 }

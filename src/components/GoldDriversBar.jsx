@@ -1,7 +1,7 @@
 import React from 'react';
 import { Activity, AlertTriangle } from 'lucide-react';
 
-function Chip({ label, value, sub, tone = 'slate' }) {
+function Chip({ label, value, sub, tone = 'slate', live = true }) {
   const tones = {
     slate: 'text-slate-200',
     up: 'text-emerald-400',
@@ -11,8 +11,12 @@ function Chip({ label, value, sub, tone = 'slate' }) {
   return (
     <div className="px-2.5 py-1.5 rounded bg-[#0e121d] border border-white/5 min-w-[110px]">
       <div className="text-[9px] font-mono text-slate-500 tracking-wider uppercase">{label}</div>
-      <div className={`text-sm font-mono font-bold tabular-nums ${tones[tone]}`}>{value}</div>
-      {sub ? <div className="text-[9px] font-mono text-slate-500">{sub}</div> : null}
+      <div className={`text-sm font-mono font-bold tabular-nums ${tones[tone]} ${live === false ? 'opacity-50' : ''}`}>{value}</div>
+      {live === false ? (
+        <div className="text-[9px] font-mono text-amber-400 animate-pulse">STALE</div>
+      ) : sub ? (
+        <div className="text-[9px] font-mono text-slate-500">{sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -38,13 +42,13 @@ export default function GoldDriversBar({ marketData, etf, geo }) {
           <Activity className="w-3.5 h-3.5 text-gold-400" />
           <span className="font-mono text-[10px] tracking-wider text-slate-300 uppercase">Gold drivers</span>
         </div>
-        <Chip label="DXY" value={fmt(dxy?.price, 3)} sub={fmtPct(dxy?.changePercent)} tone={dxy?.changePercent != null ? (dxy.changePercent > 0 ? 'down' : 'up') : 'slate'} />
-        <Chip label="Real 10Y" value={real == null ? '—' : `${fmt(real, 2)}%`} sub={marketData?.breakeven10Y != null ? `BEI ${fmt(marketData.breakeven10Y, 2)}%` : 'FRED + TNX'} tone={real != null && real > 2 ? 'down' : 'up'} />
-        <Chip label="USDJPY" value={fmt(jpy?.price, 3)} sub={fmtPct(jpy?.changePercent)} tone={pctTone(jpy?.changePercent)} />
-        <Chip label="VIX" value={fmt(vix?.price, 2)} sub={fmtPct(vix?.changePercent)} tone={vix?.price >= 20 ? 'warn' : 'slate'} />
-        <Chip label="GSR" value={fmt(gsr, 1)} sub="Gold / Silver" />
-        <Chip label="Gold ETFs" value={etf?.goldEtfBias || '—'} sub={etf?.live ? `${etf.inflowCount} in / ${etf.outflowCount} out` : 'loading'} tone={etf?.goldEtfBias === 'INFLOW' ? 'up' : etf?.goldEtfBias === 'OUTFLOW' ? 'down' : 'slate'} />
-        <Chip label="Geo risk" value={geo?.live ? `${geo.score} ${geo.level}` : '—'} sub={geo?.live ? `${geo.articleCount} GDELT 24h` : 'GDELT'} tone={geo?.score >= 50 ? 'warn' : 'slate'} />
+        <Chip label="DXY" value={fmt(dxy?.price, 3)} sub={fmtPct(dxy?.changePercent)} live={dxy?.live !== false} tone={dxy?.changePercent != null ? (dxy.changePercent > 0 ? 'down' : 'up') : 'slate'} />
+        <Chip label="Real 10Y" value={real == null ? '—' : `${fmt(real, 2)}%`} sub={marketData?.breakeven10Y != null ? `BEI ${fmt(marketData.breakeven10Y, 2)}%` : 'FRED + TNX'} live={real != null} tone={real != null && real > 2 ? 'down' : 'up'} />
+        <Chip label="USDJPY" value={fmt(jpy?.price, 3)} sub={fmtPct(jpy?.changePercent)} live={jpy?.live !== false} tone={pctTone(jpy?.changePercent)} />
+        <Chip label="VIX" value={fmt(vix?.price, 2)} sub={fmtPct(vix?.changePercent)} live={vix?.live !== false} tone={vix?.price >= 20 ? 'warn' : 'slate'} />
+        <Chip label="GSR" value={fmt(gsr, 1)} sub="Gold / Silver" live={!stale} />
+        <Chip label="Gold ETFs" value={etf?.goldEtfBias || '—'} sub={etf?.live ? `${etf.inflowCount} in / ${etf.outflowCount} out` : 'loading'} live={etf?.live !== false} tone={etf?.goldEtfBias === 'INFLOW' ? 'up' : etf?.goldEtfBias === 'OUTFLOW' ? 'down' : 'slate'} />
+        <Chip label="Geo risk" value={geo?.live ? `${geo.score} ${geo.level}` : '—'} sub={geo?.live ? `${geo.articleCount} GDELT 24h` : 'GDELT'} live={geo?.live !== false} tone={geo?.score >= 50 ? 'warn' : 'slate'} />
         <div className={`ml-auto px-2 py-1 rounded border font-mono text-[10px] ${stale ? 'border-amber-500/40 text-amber-300 bg-amber-950/30' : 'border-emerald-500/30 text-emerald-400 bg-emerald-950/20'}`}>
           {stale ? (
             <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Gold feed stale{goldAge ? ` ${Math.round(goldAge / 1000)}s` : ''}</span>

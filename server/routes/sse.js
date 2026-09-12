@@ -33,7 +33,8 @@ export function sseHandler(req, res) {
       const bias = calculateCompositeBias(cached, classifiedNews, retail, {
         cot: getCotData(),
         etf: getGoldEtfFlows(),
-        geo: getGeoRisk()
+        geo: getGeoRisk(),
+        timeframes: getTimeframeMatrix()
       });
 
       res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({

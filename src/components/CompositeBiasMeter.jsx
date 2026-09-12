@@ -2,6 +2,7 @@ import React from 'react';
 import { Gauge, ShieldCheck, Zap, Info } from 'lucide-react';
 
 export default function CompositeBiasMeter({ bias }) {
+  const actionable = bias?.actionable !== false;
   const score = bias?.score ?? 0;
   const label = bias?.label ?? 'NEUTRAL';
   const confidence = bias?.confidence ?? 50;
@@ -15,7 +16,8 @@ export default function CompositeBiasMeter({ bias }) {
     cot: 0,
     etf: 0,
     geo: 0,
-    structure: 0
+    structure: 0,
+    trend: 0
   };
 
   // Convert -100..+100 to angle in degrees (-90deg to +90deg for semi-circle)
@@ -33,12 +35,13 @@ export default function CompositeBiasMeter({ bias }) {
   const currentTheme = colorConfig[label] || colorConfig.NEUTRAL;
 
   const factors = [
-    { name: 'Macro (DXY / real yield)', weight: '16%', value: breakdown.macro ?? 0 },
-    { name: 'Price structure / key levels', weight: '12%', value: breakdown.structure ?? 0 },
-    { name: 'Metals & GSR', weight: '10%', value: breakdown.commodity ?? 0 },
-    { name: 'VIX / risk-off', weight: '12%', value: breakdown.volatility ?? 0 },
+    { name: 'Macro (DXY / real yield)', weight: '14%', value: breakdown.macro ?? 0 },
+    { name: 'Price structure / key levels', weight: '10%', value: breakdown.structure ?? 0 },
+    { name: 'Multi-TF trend alignment', weight: '10%', value: breakdown.trend ?? 0 },
+    { name: 'Metals & GSR', weight: '8%', value: breakdown.commodity ?? 0 },
+    { name: 'VIX / risk-off', weight: '10%', value: breakdown.volatility ?? 0 },
     { name: 'News', weight: '12%', value: breakdown.news ?? 0 },
-    { name: 'Asian range / ICT', weight: '10%', value: breakdown.ictSweeps ?? 0 },
+    { name: 'Asian range / ICT', weight: '8%', value: breakdown.ictSweeps ?? 0 },
     { name: 'CFTC COT', weight: '8%', value: breakdown.cot ?? 0 },
     { name: 'Gold ETF tape', weight: '8%', value: breakdown.etf ?? 0 },
     { name: 'Retail / small traders', weight: '6%', value: breakdown.retail ?? 0 },
@@ -63,7 +66,14 @@ export default function CompositeBiasMeter({ bias }) {
 
       {/* Main Gauge Graphic */}
       <div className="flex flex-col items-center justify-center my-1 relative">
-        <div className="relative w-64 h-32 overflow-hidden flex items-end justify-center">
+        {!actionable && (
+          <div className="absolute top-0 inset-x-0 z-30 flex justify-center">
+            <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 bg-amber-950/60 animate-pulse">
+              NOT ACTIONABLE — market closed / tape stale
+            </span>
+          </div>
+        )}
+        <div className="relative w-64 h-32 overflow-hidden flex items-end justify-center mt-4">
           {/* Background Arc SVG */}
           <svg className="w-64 h-64 -mb-32 transform -rotate-180" viewBox="0 0 200 200">
             {/* Background track */}
@@ -129,11 +139,11 @@ export default function CompositeBiasMeter({ bias }) {
         {/* Needle Value Readout */}
         <div className="mt-2 text-center">
           <div className="flex items-center justify-center gap-2">
-            <span className="text-3xl font-mono font-black text-white tabular-nums tracking-tight">
+            <span className={`text-3xl font-mono font-black text-white tabular-nums tracking-tight ${actionable ? '' : 'opacity-40'}`}>
               {score > 0 ? `+${score}` : score}
             </span>
-            <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border uppercase ${currentTheme.text} ${currentTheme.bg} ${currentTheme.border}`}>
-              {label}
+            <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border uppercase ${actionable ? `${currentTheme.text} ${currentTheme.bg} ${currentTheme.border}` : 'text-amber-300 bg-amber-950/40 border-amber-800/50'}`}>
+              {actionable ? label : 'HOLD — CLOSED'}
             </span>
           </div>
           <p className="text-[10px] text-slate-400 font-mono mt-0.5">

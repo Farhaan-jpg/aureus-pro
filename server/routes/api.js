@@ -25,7 +25,8 @@ function buildBias(marketData, classifiedNews, retail) {
   return calculateCompositeBias(marketData, classifiedNews, retail, {
     cot: getCotData(),
     etf: getGoldEtfFlows(),
-    geo: getGeoRisk()
+    geo: getGeoRisk(),
+    timeframes: getTimeframeMatrix()
   });
 }
 
