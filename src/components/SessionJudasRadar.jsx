@@ -1,6 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Clock, Crosshair, AlertTriangle, CheckCircle2, ChevronRight, Flame } from 'lucide-react';
 
+// Season-accurate killzones: London follows UK BST (last Sun Mar -> last Sun
+// Oct), New York follows US EDT/EST (2nd Sun Mar -> 1st Sun Nov). Same rules
+// as the server's session.js so the HUD agrees with the payload's session label.
+const secondSundayMarchUTC = (y) => {
+  const first = new Date(Date.UTC(y, 2, 1));
+  return new Date(Date.UTC(y, 2, 1 + ((7 - first.getUTCDay()) % 7) + 7)).getTime();
+};
+const firstSundayNovemberUTC = (y) => {
+  const first = new Date(Date.UTC(y, 10, 1));
+  return new Date(Date.UTC(y, 10, 1 + ((7 - first.getUTCDay()) % 7))).getTime();
+};
+const lastSundayOfMonthUTC = (y, m) => {
+  const days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const last = new Date(Date.UTC(y, m, days));
+  return new Date(Date.UTC(y, m, days - last.getUTCDay())).getTime();
+};
+const usDST = (d) => { const y = d.getUTCFullYear(); const t = d.getTime(); return t >= secondSundayMarchUTC(y) && t < firstSundayNovemberUTC(y); };
+const ukDST = (d) => { const y = d.getUTCFullYear(); const t = d.getTime(); return t >= lastSundayOfMonthUTC(y, 2) && t < lastSundayOfMonthUTC(y, 9); };
+// Stable key so the sessions table only recomputes on a DST transition, not per-second.
+const seasonKey = (d) => `${usDST(d) ? 1 : 0}${ukDST(d) ? 1 : 0}`;
+const fmtMin = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+
 export default function SessionJudasRadar({ currentPrice = null, marketData = null }) {
   const [utcTime, setUtcTime] = useState(new Date());
 
@@ -15,49 +37,53 @@ export default function SessionJudasRadar({ currentPrice = null, marketData = nu
   const utcSeconds = utcTime.getUTCSeconds();
   const currentMinuteOfDay = utcHours * 60 + utcMinutes;
 
-  // Institutional Sessions & Killzones (UTC)
-  const sessions = useMemo(() => [
-    {
-      id: 'ASIA',
-      name: 'Asian Range',
-      city: 'Tokyo / Sydney',
-      startMin: 0 * 60,     // 00:00 UTC
-      endMin: 6 * 60,       // 06:00 UTC
-      role: 'Liquidity Accumulation / Initial Balance',
-      color: 'text-amber-400',
-      borderActive: 'border-amber-500/60 bg-amber-950/20'
-    },
-    {
-      id: 'LONDON_OPEN',
-      name: 'London Killzone',
-      city: 'London Open',
-      startMin: 7 * 60,     // 07:00 UTC
-      endMin: 10 * 60,      // 10:00 UTC
-      role: 'ICT Judas Swing / Stop Run Phase',
-      color: 'text-cyan-400',
-      borderActive: 'border-cyan-500/60 bg-cyan-950/20'
-    },
-    {
-      id: 'NY_OPEN',
-      name: 'New York AM Killzone',
-      city: 'New York Open',
-      startMin: 12 * 60,    // 12:00 UTC
-      endMin: 15 * 60,      // 15:00 UTC
-      role: 'Macro Expansion & Institutional Trend',
-      color: 'text-emerald-400',
-      borderActive: 'border-emerald-500/60 bg-emerald-950/20'
-    },
-    {
-      id: 'LONDON_CLOSE',
-      name: 'London Close',
-      city: 'London Fix',
-      startMin: 15 * 60,    // 15:00 UTC
-      endMin: 17 * 60,      // 17:00 UTC
-      role: 'Daily High/Low Lock & Distribution',
-      color: 'text-purple-400',
-      borderActive: 'border-purple-500/60 bg-purple-950/20'
-    }
-  ], []);
+  // Institutional Sessions & Killzones (UTC, DST-aware)
+  const sessions = useMemo(() => {
+    const ukSummer = ukDST(utcTime);   // London +1h in BST
+    const usSummer = usDST(utcTime);   // NY in EDT
+    return [
+      {
+        id: 'ASIA',
+        name: 'Asian Range',
+        city: 'Tokyo / Sydney',
+        startMin: 0 * 60,     // 00:00 UTC
+        endMin: 6 * 60,       // 06:00 UTC
+        role: 'Liquidity Accumulation / Initial Balance',
+        color: 'text-amber-400',
+        borderActive: 'border-amber-500/60 bg-amber-950/20'
+      },
+      {
+        id: 'LONDON_OPEN',
+        name: 'London Killzone',
+        city: 'London Open',
+        startMin: (ukSummer ? 7 : 8) * 60,     // 07:00Z BST / 08:00Z GMT
+        endMin: (ukSummer ? 10 : 11) * 60,     // ±3h window
+        role: 'ICT Judas Swing / Stop Run Phase',
+        color: 'text-cyan-400',
+        borderActive: 'border-cyan-500/60 bg-cyan-950/20'
+      },
+      {
+        id: 'NY_OPEN',
+        name: 'New York AM Killzone',
+        city: 'New York Open',
+        startMin: (usSummer ? 13.5 : 14.5) * 60, // 13:30Z EDT / 14:30Z EST
+        endMin: (usSummer ? 16.5 : 17.5) * 60,   // ±3h
+        role: 'Macro Expansion & Institutional Trend',
+        color: 'text-emerald-400',
+        borderActive: 'border-emerald-500/60 bg-emerald-950/20'
+      },
+      {
+        id: 'LONDON_CLOSE',
+        name: 'London Close',
+        city: 'London Fix',
+        startMin: (ukSummer ? 15 : 16) * 60,     // 16:00 London local
+        endMin: (ukSummer ? 16.5 : 17.5) * 60,   // 17:30 London local
+        role: 'Daily High/Low Lock & Distribution',
+        color: 'text-purple-400',
+        borderActive: 'border-purple-500/60 bg-purple-950/20'
+      }
+    ];
+  }, [seasonKey(utcTime)]);
 
   // Determine active session
   const activeSession = sessions.find(
@@ -185,7 +211,7 @@ export default function SessionJudasRadar({ currentPrice = null, marketData = nu
 
               <div className="flex items-center gap-2 text-[11px]">
                 <span className={isActive ? s.color : 'text-slate-500'}>
-                  {isActive ? 'ACTIVE KILLZONE' : `${Math.floor(s.startMin / 60)}:00 - ${Math.floor(s.endMin / 60)}:00 UTC`}
+                  {isActive ? 'ACTIVE KILLZONE' : `${fmtMin(s.startMin)} - ${fmtMin(s.endMin)} UTC`}
                 </span>
               </div>
             </div>

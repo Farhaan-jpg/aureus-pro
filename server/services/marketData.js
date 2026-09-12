@@ -6,6 +6,7 @@ import { getCorrelationMonitor, refreshCorrelationMonitor } from './correlationM
 import { getVolatilityRegime, refreshVolatilityRegime } from './volatilityRegime.js';
 import { getMarketState } from './marketState.js';
 import { recordError } from './errorLog.js';
+import { ukDaylightTime, usDaylightTime } from './session.js';
 
 const ASSETS = {
   GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', yahoo: 'GC=F', digits: 2 },
@@ -372,11 +373,14 @@ function pearson(a, b, windowMs = CORR_WINDOW_MS, buckets = 60) {
   return Number((num / denom).toFixed(2));
 }
 
-function sessionFromUtc(date = new Date()) {
+export function sessionFromUtc(date = new Date()) {
+  const londonOpen = ukDaylightTime(date) ? 7 : 8;
+  const afternoonEnd = usDaylightTime(date) ? 20 : 21;
   const utcHour = date.getUTCHours();
-  if (utcHour >= 7 && utcHour < 12) return 'LONDON_OPEN';
-  if (utcHour >= 12 && utcHour < 16) return 'NY_OVERLAP';
-  if (utcHour >= 16 && utcHour < 21) return 'NY_AFTERNOON';
+  if (utcHour < londonOpen) return 'ASIAN_PACIFIC';
+  if (utcHour < 12) return 'LONDON_OPEN';
+  if (utcHour < 16) return 'NY_OVERLAP';
+  if (utcHour < afternoonEnd) return 'NY_AFTERNOON';
   return 'ASIAN_PACIFIC';
 }
 

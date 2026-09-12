@@ -10,6 +10,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "test": "node --test",
+    "selfcheck": "node scripts/selfcheck.mjs",
     "start": "node server/index.js"
   },
   "dependencies": {
