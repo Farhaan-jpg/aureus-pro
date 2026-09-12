@@ -199,11 +199,17 @@ export async function aggregateAllNews() {
     uniqueTokens.push(tokens);
   }
 
-  // Merge with previous cache, capped at 40 headlines
+  // Merge with previous cache, capped at 40 headlines. Also guard the merge:
+  // a syndicated reprint arriving one refresh later must not survive because it
+  // collides with a near-duplicate already cached from the previous cycle.
+  const existingTokens = (cachedNews || []).map(n => titleTokens(n.title));
   const existingMap = new Map((cachedNews || []).map(n => [n.id, n]));
   for (const n of unique) {
+    const tokens = titleTokens(n.title);
+    if (existingTokens.some(seen => isNearDuplicate(tokens, seen))) continue;
     if (!existingMap.has(n.id)) {
       existingMap.set(n.id, n);
+      existingTokens.push(tokens);
     }
   }
 

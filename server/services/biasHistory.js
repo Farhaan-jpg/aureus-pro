@@ -48,18 +48,37 @@ export function recordBiasSnapshot({ price, score, label, confidence, actionable
 
 // Pure so it can be unit-tested with synthetic snapshots. Only judges calls we
 // would have acted on (actionable, directional score) and resolves each against
-// the first snapshot at/after the horizon.
+// the first snapshot at/after the horizon. Calls whose forward print only
+// exists after a market gap (>3x horizon) are UNRESOLVED: quoting a Friday
+// evening call as "1H accuracy" against Monday's print would be a lie.
+export function countUnresolved(snaps, horizonMs = 3600000) {
+  let unresolved = 0;
+  for (let i = 0; i < snaps.length; i++) {
+    const s = snaps[i];
+    if (s.actionable === false || Math.abs(s.score) < 10) continue;
+    const goal = s.t + horizonMs;
+    let fwd = null;
+    for (let j = i + 1; j < snaps.length; j++) {
+      if (snaps[j].t >= goal) { fwd = snaps[j]; break; }
+    }
+    if (fwd == null || fwd.t - goal > horizonMs * 3) unresolved++;
+  }
+  return unresolved;
+}
+
 export function resolveAccuracy(snaps, horizonMs = 3600000) {
   const resolved = [];
   for (let i = 0; i < snaps.length; i++) {
     const s = snaps[i];
     if (s.actionable === false) continue;
     if (Math.abs(s.score) < 10) continue;
+    const goal = s.t + horizonMs;
     let fwd = null;
     for (let j = i + 1; j < snaps.length; j++) {
-      if (snaps[j].t >= s.t + horizonMs) { fwd = snaps[j]; break; }
+      if (snaps[j].t >= goal) { fwd = snaps[j]; break; }
     }
-    if (!fwd || fwd.price === s.price) continue;
+    if (!fwd || fwd.t - goal > horizonMs * 3) continue;
+    if (fwd.price === s.price) continue;
     const moved = Math.sign(fwd.price - s.price);
     const called = Math.sign(s.score);
     resolved.push({
@@ -86,6 +105,7 @@ function rate(rows) {
 
 export function getBiasAccuracy(horizonMs = 3600000) {
   const rows = resolveAccuracy(snapshots, horizonMs);
+  const unresolved = countUnresolved(snapshots, horizonMs);
   const byLabel = {};
   for (const lbl of ['STRONG BUY', 'BUY', 'SELL', 'STRONG SELL']) {
     const sub = rows.filter((r) => r.label === lbl);
@@ -104,7 +124,9 @@ export function getBiasAccuracy(horizonMs = 3600000) {
     horizonMinutes: Math.round(horizonMs / 60000),
     snapshots: snapshots.length,
     windowStart: snapshots.length ? new Date(snapshots[0].t).toISOString() : null,
-    overall: rate(rows),
+    windowEnd: snapshots.length ? new Date(snapshots[snapshots.length - 1].t).toISOString() : null,
+    unresolved,
+    overall: { ...rate(rows), unresolved },
     byLabel,
     byConfidence
   };

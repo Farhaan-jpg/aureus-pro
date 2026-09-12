@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveAccuracy } from '../server/services/biasHistory.js';
+import { resolveAccuracy, countUnresolved } from '../server/services/biasHistory.js';
 import { titleTokens, isNearDuplicate } from '../server/services/rssNews.js';
 
 const T0 = Date.UTC(2026, 8, 10, 12); // Thu Sep 10 2026 12:00Z
@@ -26,13 +26,26 @@ test('resolveAccuracy judges calls against the forward print', () => {
   assert.ok(rows[0].pnlPct > 0);
 });
 
-test('resolveAccuracy scores a miss and skips exits', () => {
+test('resolveAccuracy skips exits where the market never moved', () => {
   const snaps = [
-    snap(0, 100, -20, 'SELL'),       // call down
-    snap(70, 100, 0, 'NEUTRAL', 50)  // no movement -> skipped (same price)
+    snap(0, 100, -20, 'SELL'),
+    snap(70, 100, 0, 'NEUTRAL', 50)
   ];
   const rows = resolveAccuracy(snaps, 60 * 60000);
   assert.equal(rows.length, 0);
+});
+
+test('resolveAccuracy exempts calls whose forward print crosses the weekend', () => {
+  // Friday 20:00Z call, 1H horizon; next snapshot is Monday 22:00Z (~50h later)
+  const fri = Date.UTC(2026, 8, 11, 20, 0);
+  const mon = Date.UTC(2026, 8, 14, 22, 0);
+  const snaps = [
+    { t: fri, price: 100, score: +20, label: 'BUY', confidence: 80, actionable: true },
+    { t: fri + 10 * 60000, price: 101, score: 0, label: 'NEUTRAL', confidence: 50, actionable: true },
+    { t: mon, price: 103, score: 0, label: 'NEUTRAL', confidence: 50, actionable: true }
+  ];
+  assert.equal(resolveAccuracy(snaps, 60 * 60000).length, 0);
+  assert.equal(countUnresolved(snaps, 60 * 60000), 1);
 });
 
 test('resolveAccuracy ignores non-actionable and weak calls', () => {
