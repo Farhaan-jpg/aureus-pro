@@ -41,6 +41,26 @@ export default function Header({
 
   const sessionInfo = sessionDisplayMap[session] || sessionDisplayMap.ASIAN;
 
+  // Honest stream state: SSE connectivity alone doesn't mean live data.
+  const marketOpen = marketData?.marketState?.open !== false;
+  const tapeAge = marketData?.dataHealth?.goldAgeMs;
+  const tapeFresh = tapeAge == null || tapeAge < 30000;
+  const streamLabel = !marketOpen
+    ? 'MARKET CLOSED'
+    : isLive && tapeFresh ? 'STREAM LIVE'
+    : isLive ? `STALE TAPE ${Math.round((tapeAge ?? 0) / 1000)}s`
+    : 'CONNECTING';
+  const streamTextCls = !marketOpen
+    ? 'text-slate-400'
+    : isLive && tapeFresh ? 'text-emerald-400'
+    : isLive ? 'text-amber-400'
+    : 'text-slate-400';
+  const streamDotCls = !marketOpen
+    ? 'bg-slate-500'
+    : isLive && tapeFresh ? 'bg-emerald-400 animate-pulse'
+    : isLive ? 'bg-amber-400 animate-pulse'
+    : 'bg-rose-500';
+
   return (
     <header className="border-b border-white/10 bg-[#0a0c12]/90 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-[1920px] mx-auto px-4 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
@@ -139,11 +159,11 @@ export default function Header({
 
         {/* Right Status & Trigger Buttons */}
         <div className="flex items-center gap-2">
-          {/* SSE Connection State */}
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900/80 border border-white/5 text-[11px] font-mono">
-            <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
-            <span className={isLive ? 'text-emerald-400' : 'text-slate-400'}>
-              {isLive ? 'STREAM LIVE' : 'CONNECTING'}
+          {/* SSE Connection / Tape State */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900/80 border border-white/5 text-[11px] font-mono" title={`Gold tape age: ${tapeAge == null ? '—' : Math.round(tapeAge / 1000) + 's'}`}>
+            <span className={`w-2 h-2 rounded-full ${streamDotCls}`} />
+            <span className={streamTextCls}>
+              {streamLabel}
             </span>
           </div>
 
