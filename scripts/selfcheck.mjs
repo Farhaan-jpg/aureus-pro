@@ -56,6 +56,7 @@ try {
   check('market-data has a gold print', typeof md?.goldSpot?.price === 'number' && Number.isFinite(md?.goldSpot?.price), `price=${md?.goldSpot?.price}`);
   check('market-data exposes a session', typeof md?.session === 'string' && md.session.length > 0, `session=${md.session}`);
   check('market-data carries marketState', typeof md?.marketState?.open === 'boolean');
+  check('market-data carries the real-yield field (largest-weight channel wiring)', 'realYield10Y' in md, md?.realYield10Y == null ? 'present, unfilled (network/boot warm-up)' : `real=${md.realYield10Y}`);
 
   const bias = await (await fetch(`${base}/api/composite-bias`)).json();
   check('bias has numeric score', typeof bias?.score === 'number' && Number.isFinite(bias.score), `score=${bias.score}`);
