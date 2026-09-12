@@ -5,6 +5,7 @@ import { getKeyLevels, refreshKeyLevels } from './keyLevels.js';
 import { getCorrelationMonitor, refreshCorrelationMonitor } from './correlationMonitor.js';
 import { getVolatilityRegime, refreshVolatilityRegime } from './volatilityRegime.js';
 import { getMarketState } from './marketState.js';
+import { recordError } from './errorLog.js';
 
 const ASSETS = {
   GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', yahoo: 'GC=F', digits: 2 },
@@ -435,9 +436,11 @@ export async function getMarketData() {
           applyQuote(key, q, 'yahoo');
         }
       })
-    ).catch(() => {});
+    ).catch((err) => {
+      recordError('yahooQuotes', err?.message);
+    });
     fetchAltGold();
-    refreshFredMacro().catch(() => {});
+    refreshFredMacro().catch((err) => recordError('fredRefresh', err?.message));
   }
 
   if (now - lastTvScan > 30000) {
@@ -452,7 +455,9 @@ export async function getMarketData() {
           applyQuote(key, quote, 'tradingview-scan');
         }
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      recordError('tvScan', err?.message);
+    });
   }
 
   const fred = getFredMacro();

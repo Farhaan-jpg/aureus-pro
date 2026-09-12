@@ -9,6 +9,7 @@ import { getGeoRisk } from '../services/geoRisk.js';
 import { getTimeframeMatrix } from '../services/timeframeMatrix.js';
 
 const sseClients = new Set();
+const MAX_SSE_CLIENTS = 100;
 
 export function sseHandler(req, res) {
   res.writeHead(200, {
@@ -46,6 +47,14 @@ export function sseHandler(req, res) {
     } catch (err) {}
   }
 
+  // Cap zombie tabs: evict the oldest connection once the ceiling is hit.
+  if (sseClients.size >= MAX_SSE_CLIENTS) {
+    const oldest = sseClients.values().next().value;
+    if (oldest) {
+      try { oldest.end(); } catch (e) {}
+      sseClients.delete(oldest);
+    }
+  }
   sseClients.add(res);
 
   const heartbeatTimer = setInterval(() => {
@@ -53,6 +62,7 @@ export function sseHandler(req, res) {
       res.write(`: heartbeat\n\n`);
     } catch (e) {
       clearInterval(heartbeatTimer);
+      sseClients.delete(res);
     }
   }, 25000);
 
@@ -63,6 +73,7 @@ export function sseHandler(req, res) {
 }
 
 export function broadcastToAll(eventType, payload) {
+  if (sseClients.size === 0) return;
   const message = `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const client of sseClients) {
     try {

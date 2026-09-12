@@ -21,6 +21,7 @@ import { sendRedFolderTelegramAlert,
   sendDailyBriefingTelegramAlert
 } from './telegramBot.js';
 import { getMarketState } from './marketState.js';
+import { recordError } from './errorLog.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -34,6 +35,7 @@ const alertedEventIds = new Set();
 const degradedAlerts = new Set();
 
 let briefSentForDate = null;
+let broadcastInFlight = false;
 
 function currentBias(marketData, classifiedNews, retail) {
   return calculateCompositeBias(marketData, classifiedNews, retail, {
@@ -45,6 +47,8 @@ function currentBias(marketData, classifiedNews, retail) {
 }
 
 async function broadcastTick() {
+  if (broadcastInFlight) return; // no overlapping tick broadcasts
+  broadcastInFlight = true;
   try {
     const marketData = await getMarketData();
     const classifiedNews = classifyAllNews(getCachedNews());
@@ -57,7 +61,11 @@ async function broadcastTick() {
       retail,
       timeframes: getTimeframeMatrix()
     });
-  } catch (err) {}
+  } catch (err) {
+    recordError('tickBroadcast', err?.message);
+  } finally {
+    broadcastInFlight = false;
+  }
 }
 
 function scheduleTickBroadcast() {
@@ -102,6 +110,7 @@ export function startBackgroundWorker() {
       broadcastToAll('NEWS_UPDATE', { news: classifiedNews, geo });
     } catch (err) {
       console.error('[Worker News Loop Error]:', err.message);
+      recordError('newsLoop', err.message);
     }
   }, config.newsRefreshMs);
 
@@ -124,6 +133,7 @@ export function startBackgroundWorker() {
       });
     } catch (err) {
       console.error('[Worker Macro Loop Error]:', err.message);
+      recordError('macroLoop', err.message);
     }
   }, 5 * 60 * 1000);
 
@@ -134,7 +144,9 @@ export function startBackgroundWorker() {
       const retail = getRetailSentiment(marketData.goldSpot.price);
       const bias = currentBias(marketData, classifiedNews, retail);
       await checkTelegramTriggers(marketData, bias, retail);
-    } catch (e) {}
+    } catch (e) {
+      recordError('telegramTriggers', e?.message);
+    }
   }, 30000);
 
   // Daily Telegram briefing — fires once per UTC date within the schedule minute
@@ -162,7 +174,9 @@ export function startBackgroundWorker() {
         });
         console.log('[Aureus Worker] Daily Telegram briefing dispatched.');
       }
-    } catch (e) {}
+    } catch (e) {
+      recordError('dailyBrief', e?.message);
+    }
   }, 15000);
 }
 
@@ -204,7 +218,9 @@ async function checkTelegramTriggers(marketData, bias, retail) {
     }
 
     await checkFeedHealth(marketData);
-  } catch (err) {}
+  } catch (err) {
+    recordError('checkFeedHealth', err?.message);
+  }
 }
 
 // Detect fresh degradations only; clear flags when a feed recovers so a
@@ -238,7 +254,9 @@ async function checkFeedHealth(marketData) {
     if (freshIssues.length) {
       await sendFeedHealthTelegramAlert(freshIssues);
     }
-  } catch (err) {}
+  } catch (err) {
+    recordError('feedHealthInternal', err?.message);
+  }
 }
 
 export async function refreshAndBroadcast() {
@@ -279,6 +297,7 @@ export async function refreshAndBroadcast() {
     return payload;
   } catch (err) {
     console.error('[Worker Full Sync Error]:', err.message);
+    recordError('fullSync', err.message);
     return null;
   }
 }

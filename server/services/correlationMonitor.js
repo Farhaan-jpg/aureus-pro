@@ -28,7 +28,7 @@ function returnsSeries(closes) {
   return out;
 }
 
-function pearson(a, b) {
+export function pearson(a, b) {
   if (!a || !b) return null;
   const n = Math.min(a.length, b.length);
   if (n < 40) return null;
@@ -52,7 +52,7 @@ function pearson(a, b) {
 }
 
 // Inverse relationship expected for both. Positive corr = structural break.
-function regimeLabel(r) {
+export function regimeLabel(r) {
   if (r == null) return 'UNKNOWN';
   if (r < -0.4) return 'HEALTHY INVERSE';
   if (r < 0) return 'WEAK INVERSE';

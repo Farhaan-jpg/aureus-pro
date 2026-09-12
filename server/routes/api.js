@@ -15,6 +15,9 @@ import { refreshGoldEtfFlows, getGoldEtfFlows } from '../services/goldEtfFlows.j
 import { refreshGeoRisk, getGeoRisk } from '../services/geoRisk.js';
 import { refreshFredMacro, getFredMacro } from '../services/fredMacro.js';
 import { refreshTimeframeMatrix, getTimeframeMatrix } from '../services/timeframeMatrix.js';
+import { getMarketState } from '../services/marketState.js';
+import { getRecentErrors, clearErrors } from '../services/errorLog.js';
+import { getClientCount } from './sse.js';
 
 const router = Router();
 
@@ -37,6 +40,42 @@ router.get('/market-data', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message, fallback: getCachedMarketData() });
   }
+});
+
+// Operator health surface: feed states + any errors swallowed by background loops
+router.get('/health', (req, res) => {
+  const md = getCachedMarketData();
+  const geo = getGeoRisk();
+  const cal = getEconomicCalendar();
+  res.json({
+    status: 'HEALTHY',
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+    sseClients: getClientCount(),
+    memory: {
+      rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
+      heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`
+    },
+    marketState: md?.marketState ?? getMarketState(),
+    marketDataCached: Boolean(md),
+    feeds: {
+      tvWs: md?.dataHealth?.tvWs ?? null,
+      goldSource: md?.dataHealth?.goldSource ?? null,
+      goldAgeMs: md?.dataHealth?.goldAgeMs ?? null,
+      geo: geo?.source ?? null,
+      geoLive: geo?.live ?? null,
+      calendar: cal?.feedSource ?? null,
+      etfLive: Boolean(getGoldEtfFlows()?.live),
+      fredLive: Boolean(getFredMacro()?.live),
+      timeframesLive: Boolean(getTimeframeMatrix()?.live)
+    },
+    errors: getRecentErrors(20)
+  });
+});
+
+router.post('/health/errors/clear', (req, res) => {
+  clearErrors();
+  res.json({ cleared: true });
 });
 
 router.get('/news', async (req, res) => {

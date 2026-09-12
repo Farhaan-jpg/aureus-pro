@@ -44,14 +44,14 @@ function parseBars(json) {
 
 // ISO week key (Mon..Sun via UTC) so weekly bars are derived deterministically
 // from daily closes — avoids Yahoo's in-progress weekly candle duplicates.
-function weekKey(d) {
+export function weekKey(d) {
   const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = (t.getUTCDay() + 6) % 7; // Mon=0
   t.setUTCDate(t.getUTCDate() - day);
   return t.toISOString().slice(0, 10);
 }
 
-function aggregateWeekly(dailyBars) {
+export function aggregateWeekly(dailyBars) {
   const groups = new Map();
   for (const bar of dailyBars) {
     const key = weekKey(bar.time);
@@ -67,7 +67,7 @@ function aggregateWeekly(dailyBars) {
   return [...groups.values()].sort((a, b) => a.time - b.time);
 }
 
-function floorPivots(bar) {
+export function floorPivots(bar) {
   if (!bar) return null;
   const { high, low, close } = bar;
   const p = (high + low + close) / 3;
