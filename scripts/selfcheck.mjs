@@ -64,6 +64,10 @@ try {
 
   const news = await (await fetch(`${base}/api/news`)).json();
   check('news endpoint returns an array', Array.isArray(news?.news ?? news), `type=${Array.isArray(news?.news ?? news) ? 'array' : typeof news}`);
+
+  const accuracy = await (await fetch(`${base}/api/bias-accuracy?horizonMinutes=60`)).json();
+  check('bias-accuracy reports overall stats', accuracy?.overall && typeof accuracy.overall.resolved === 'number', `resolved=${accuracy?.overall?.resolved}`);
+  check('bias-accuracy carries snapshots count', typeof accuracy?.snapshots === 'number' && accuracy.snapshots >= 0, `snapshots=${accuracy?.snapshots}`);
 } catch (err) {
   console.log(`FAIL  ${err.message}`);
   failures++;

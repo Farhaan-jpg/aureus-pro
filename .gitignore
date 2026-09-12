@@ -7,3 +7,4 @@ npm-debug.log*
 server/data/terminal_settings.json
 server/data/calendar_cache.json
 server/data/cot_cache.json
+server/data/bias_history.json

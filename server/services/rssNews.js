@@ -51,6 +51,33 @@ function generateHash(title) {
   return crypto.createHash('sha256').update(title.toLowerCase().trim()).digest('hex');
 }
 
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'to', 'of', 'in', 'on', 'for', 'and', 'as', 'at', 'by', 'is', 'are',
+  'with', 'from', 'after', 'over', 'its', 'it', 'this', 'that', 'be', 'amid', 'into', 'us'
+]);
+
+// Normalized significant words of a headline, used to collapse syndicated
+// copies of one story ("Gold rises on Fed cut bets" vs "Gold rallies as Fed
+// cut hopes grow") so the news channel isn't inflated by reprints.
+export function titleTokens(title) {
+  const words = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+  return new Set(words);
+}
+
+export function isNearDuplicate(a, b, { jaccard = 0.45, containment = 0.7 } = {}) {
+  if (!a?.size || !b?.size) return false;
+  let intersection = 0;
+  for (const w of a) if (b.has(w)) intersection++;
+  if (!intersection) return false;
+  const union = a.size + b.size - intersection;
+  const min = Math.min(a.size, b.size);
+  return intersection / union >= jaccard || intersection / min >= containment;
+}
+
 // Fallback high-conviction institutional headlines
 const INSTITUTIONAL_BENCHMARK_HEADLINES = [
   {
@@ -162,9 +189,19 @@ export async function aggregateAllNews() {
   // Sort by newest publication date
   deduplicated.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
 
+  // Collapse near-duplicate stories so one event reported by 5 outlets counts once.
+  const unique = [];
+  const uniqueTokens = [];
+  for (const item of deduplicated) {
+    const tokens = titleTokens(item.title);
+    if (uniqueTokens.some((seen) => isNearDuplicate(tokens, seen))) continue;
+    unique.push(item);
+    uniqueTokens.push(tokens);
+  }
+
   // Merge with previous cache, capped at 40 headlines
   const existingMap = new Map((cachedNews || []).map(n => [n.id, n]));
-  for (const n of deduplicated) {
+  for (const n of unique) {
     if (!existingMap.has(n.id)) {
       existingMap.set(n.id, n);
     }

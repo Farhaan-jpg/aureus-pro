@@ -22,6 +22,7 @@ import { sendRedFolderTelegramAlert,
 } from './telegramBot.js';
 import { getMarketState } from './marketState.js';
 import { recordError } from './errorLog.js';
+import { recordBiasSnapshot } from './biasHistory.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -165,6 +166,26 @@ export function startBackgroundWorker() {
       recordError('telegramTriggers', e?.message);
     }
   }, 30000);
+
+  // Bias accuracy snapshot: capture the call + price every 5 min while open so
+  // outcomes can be resolved against the forward print (see biasHistory.js).
+  setInterval(async () => {
+    try {
+      const ms = getMarketState();
+      if (!ms.open) return;
+      const md = await getMarketData();
+      const bias = currentBias(md, classifyAllNews(getCachedNews()), getRetailSentiment(md.goldSpot.price));
+      recordBiasSnapshot({
+        price: md.goldSpot.price,
+        score: bias.score,
+        label: bias.label,
+        confidence: bias.confidence,
+        actionable: bias.actionable
+      });
+    } catch (err) {
+      recordError('biasSnapshot', err?.message);
+    }
+  }, 5 * 60 * 1000);
 
   // Daily Telegram briefing — fires once per UTC date within the schedule minute
   setInterval(async () => {

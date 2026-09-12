@@ -19,6 +19,7 @@ import { getCachedCalendar } from '../services/economicCalendar.js';
 import { getMarketState } from '../services/marketState.js';
 import { getRecentErrors, clearErrors } from '../services/errorLog.js';
 import { getClientCount } from './sse.js';
+import { getBiasAccuracy } from '../services/biasHistory.js';
 
 const router = Router();
 
@@ -108,6 +109,12 @@ router.get('/health', (req, res) => {
 router.post('/health/errors/clear', (req, res) => {
   clearErrors();
   res.json({ cleared: true });
+});
+
+// Bias outcome feedback loop: hit-rate by label / confidence / horizon
+router.get('/bias-accuracy', (req, res) => {
+  const horizonMinutes = Math.min(24 * 60, Math.max(5, Number(req.query.horizonMinutes) || 60));
+  res.json(getBiasAccuracy(horizonMinutes * 60000));
 });
 
 router.get('/news', async (req, res) => {
