@@ -19,7 +19,10 @@ import { getCachedCalendar } from '../services/economicCalendar.js';
 import { getMarketState } from '../services/marketState.js';
 import { getRecentErrors, clearErrors } from '../services/errorLog.js';
 import { getClientCount } from './sse.js';
-import { getBiasAccuracy } from '../services/biasHistory.js';
+import { getBiasAccuracy, getCalibratedWeights, getChannelAccuracy } from '../services/biasHistory.js';
+import { refreshCentralBankWatch } from '../services/centralBank.js';
+import { getPushConfig, saveSubscription, removeSubscription, sendPush } from '../services/webPush.js';
+import { getSessionRecap } from '../services/sessionRecap.js';
 
 const router = Router();
 
@@ -53,11 +56,14 @@ const __api_dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE_PATH = path.join(__api_dirname, '../data/terminal_settings.json');
 
 function buildBias(marketData, classifiedNews, retail) {
+  const centralBank = refreshCentralBankWatch(classifiedNews);
   return calculateCompositeBias(marketData, classifiedNews, retail, {
     cot: getCotData(),
     etf: getGoldEtfFlows(),
     geo: getGeoRisk(),
-    timeframes: getTimeframeMatrix()
+    timeframes: getTimeframeMatrix(),
+    centralBank,
+    calibratedWeights: getCalibratedWeights(marketData.session)
   });
 }
 
@@ -115,6 +121,13 @@ router.post('/health/errors/clear', (req, res) => {
 router.get('/bias-accuracy', (req, res) => {
   const horizonMinutes = Math.min(24 * 60, Math.max(5, Number(req.query.horizonMinutes) || 60));
   res.json(getBiasAccuracy(horizonMinutes * 60000));
+});
+
+// Channel-level calibration: which composite channels actually cast correct
+// votes, and the tuned weights the model now applies from that feedback.
+router.get('/channel-accuracy', (req, res) => {
+  const horizonMinutes = Math.min(24 * 60, Math.max(5, Number(req.query.horizonMinutes) || 60));
+  res.json(getChannelAccuracy(horizonMinutes * 60000));
 });
 
 router.get('/news', async (req, res) => {
@@ -270,7 +283,9 @@ router.post('/telegram/daily-brief', async (req, res) => {
     const bias = calculateCompositeBias(marketData, classifiedNews, retail, {
       cot: getCotData(),
       etf: getGoldEtfFlows(),
-      geo: getGeoRisk()
+      geo: getGeoRisk(),
+      centralBank: refreshCentralBankWatch(classifiedNews),
+      calibratedWeights: getCalibratedWeights(marketData.session)
     });
     const result = await sendDailyBriefingTelegramAlert({
       marketData,
@@ -280,6 +295,45 @@ router.post('/telegram/daily-brief', async (req, res) => {
       retail
     });
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Session Recap ────────────────────────────────────────────────────────
+router.get('/session-recap', (req, res) => {
+  const recap = getSessionRecap();
+  res.json({ recap: recap || null, supported: true });
+});
+
+// ── Web Push Notifications ──────────────────────────────────────────────
+router.get('/push/config', (req, res) => {
+  res.json(getPushConfig());
+});
+
+router.post('/push/subscribe', (req, res) => {
+  try {
+    const result = saveSubscription(req.body?.subscription);
+    res.json({ ...result, publicKey: getPushConfig().publicKey });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/push/unsubscribe', (req, res) => {
+  const result = removeSubscription(req.body?.subscription?.endpoint || req.body?.endpoint);
+  res.json(result);
+});
+
+router.post('/push/test', async (req, res) => {
+  try {
+    const result = await sendPush({
+      title: 'Aureus Pro — Push Test',
+      body: `Notifications are live. XAU/USD tracking ${new Date().toUTCString()}.`,
+      tag: 'push-test',
+      url: '/'
+    }, { ttl: 300 });
+    res.json({ success: result.sent > 0, ...result });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

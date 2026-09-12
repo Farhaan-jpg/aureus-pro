@@ -53,14 +53,19 @@ try {
   check('marketState label matches offline expectation', msActual === msExpected, `${msActual} vs expected ${msExpected}`);
 
   const md = await (await fetch(`${base}/api/market-data`)).json();
-  check('market-data has a gold print', typeof md?.goldSpot?.price === 'number' && Number.isFinite(md?.goldSpot?.price), `price=${md?.goldSpot?.price}`);
+  // A live print is a structural invariant ONLY while the market is open; over a
+  // weekend close the tape has no live source and the cached quote may be empty
+  // on a cold boot (network warming). When open, null price is a real failure.
+  const marketClosed = md?.marketState?.open === false;
+  const hasGoldPrint = typeof md?.goldSpot?.price === 'number' && Number.isFinite(md?.goldSpot?.price);
+  check('market-data has a gold print', marketClosed || hasGoldPrint, `price=${md?.goldSpot?.price}${marketClosed ? ' (market CLOSED — tolerated)' : ''}`);
   check('market-data exposes a session', typeof md?.session === 'string' && md.session.length > 0, `session=${md.session}`);
   check('market-data carries marketState', typeof md?.marketState?.open === 'boolean');
   check('market-data carries the real-yield field (largest-weight channel wiring)', 'realYield10Y' in md, md?.realYield10Y == null ? 'present, unfilled (network/boot warm-up)' : `real=${md.realYield10Y}`);
 
   const bias = await (await fetch(`${base}/api/composite-bias`)).json();
   check('bias has numeric score', typeof bias?.score === 'number' && Number.isFinite(bias.score), `score=${bias.score}`);
-  check('bias exposes all 11 channels', bias?.breakdown && Object.keys(bias.breakdown).length === 11, `channels=${bias?.breakdown ? Object.keys(bias.breakdown).length : 'none'}`);
+  check('bias exposes all 12 channels', bias?.breakdown && Object.keys(bias.breakdown).length === 12, `channels=${bias?.breakdown ? Object.keys(bias.breakdown).length : 'none'}`);
   check('bias carries actionable flag', typeof bias?.actionable === 'boolean', `actionable=${bias?.actionable}`);
 
   const news = await (await fetch(`${base}/api/news`)).json();

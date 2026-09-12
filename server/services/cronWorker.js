@@ -22,7 +22,10 @@ import { sendRedFolderTelegramAlert,
 } from './telegramBot.js';
 import { getMarketState } from './marketState.js';
 import { recordError } from './errorLog.js';
-import { recordBiasSnapshot, getBiasAccuracy } from './biasHistory.js';
+import { recordBiasSnapshot, getBiasAccuracy, getCalibratedWeights } from './biasHistory.js';
+import { refreshCentralBankWatch } from './centralBank.js';
+import { sendPush } from './webPush.js';
+import { buildSessionRecap } from './sessionRecap.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -30,6 +33,7 @@ let pendingBroadcastTimer = null;
 let lastSentBiasLabel = null;
 let lastRetailTrapAlertTime = 0;
 const alertedEventIds = new Set();
+const pushedNewsTitles = new Set();
 
 // Feed-health transition detection: only alert when a source DEGRADES (once per
 // transition), so repeated fallback pings never spam the channel.
@@ -39,11 +43,14 @@ let briefSentForDate = null;
 let broadcastInFlight = false;
 
 function currentBias(marketData, classifiedNews, retail) {
+  const centralBank = refreshCentralBankWatch(classifiedNews);
   return calculateCompositeBias(marketData, classifiedNews, retail, {
     cot: getCotData(),
     etf: getGoldEtfFlows(),
     geo: getGeoRisk(),
-    timeframes: getTimeframeMatrix()
+    timeframes: getTimeframeMatrix(),
+    centralBank,
+    calibratedWeights: getCalibratedWeights(marketData.session)
   });
 }
 
@@ -104,7 +111,8 @@ export function startBackgroundWorker() {
   }, config.marketRefreshMs);
 
   // When the weekly close ends and the tap reopens, stale Friday pivots must
-  // not steer the first minutes of Sunday — refresh levels immediately.
+  // not steer the first minutes of Sunday — refresh levels immediately. On a
+  // session close, push and broadcast the deterministic session recap.
   let wasMarketOpen = null;
   setInterval(async () => {
     try {
@@ -113,6 +121,19 @@ export function startBackgroundWorker() {
         console.log('[Aureus Worker] Market reopened — refreshing key levels.');
         await refreshKeyLevels();
         scheduleTickBroadcast();
+      }
+      if (!ms.open && wasMarketOpen === true) {
+        console.log('[Aureus Worker] Session closed — building recap.');
+        const recap = buildSessionRecap();
+        broadcastToAll('SESSION_RECAP', recap);
+        if (recap && recap.summaryText) {
+          sendPush({
+            title: 'Session Recap — XAU/USD',
+            body: recap.summaryText,
+            tag: `recap-${recap.session}-${recap.asOf.slice(0, 13)}`,
+            url: '/'
+          }, { ttl: 3600, urgency: 'normal' });
+        }
       }
       wasMarketOpen = ms.open;
     } catch (err) {
@@ -126,6 +147,21 @@ export function startBackgroundWorker() {
       const classifiedNews = classifyAllNews(rawNews);
       const geo = await refreshGeoRisk();
       broadcastToAll('NEWS_UPDATE', { news: classifiedNews, geo });
+
+      // Push high-impact new headlines (mirrors the client voice threshold).
+      const latest = classifiedNews[0];
+      if (latest && Math.abs(latest.score || 0) >= 30 && !pushedNewsTitles.has(latest.title)) {
+        pushedNewsTitles.add(latest.title);
+        if (pushedNewsTitles.size > 300) {
+          pushedNewsTitles.delete(pushedNewsTitles.values().next().value);
+        }
+        sendPush({
+          title: 'Breaking Gold News',
+          body: latest.title.slice(0, 140),
+          tag: `news-${latest.title.slice(0, 40)}`,
+          url: '/'
+        }, { ttl: 900 });
+      }
     } catch (err) {
       console.error('[Worker News Loop Error]:', err.message);
       recordError('newsLoop', err.message);
@@ -180,7 +216,9 @@ export function startBackgroundWorker() {
         score: bias.score,
         label: bias.label,
         confidence: bias.confidence,
-        actionable: bias.actionable
+        actionable: bias.actionable,
+        channels: bias.breakdown,
+        session: md.session
       });
     } catch (err) {
       recordError('biasSnapshot', err?.message);
@@ -237,6 +275,12 @@ async function checkTelegramTriggers(marketData, bias, retail) {
               alertedEventIds.delete(alertedEventIds.values().next().value); // keep dedupe bounded
             }
             await sendRedFolderTelegramAlert(ev, diffMins, goldPrice);
+            sendPush({
+              title: `HIGH-IMPACT RELEASE IN ${diffMins}M`,
+              body: `${ev.title} (${ev.currency}) — ${ev.forecast || '---'} vs prior ${ev.previous || '---'} · Gold $${goldPrice.toFixed(2)}`,
+              tag: `red-folder-${ev.id}`,
+              url: '/'
+            }, { ttl: 600, urgency: 'high' });
           }
         }
       }
@@ -252,6 +296,12 @@ async function checkTelegramTriggers(marketData, bias, retail) {
 
       if (lastSentBiasLabel && lastSentBiasLabel !== bias.label) {
         await sendBiasFlipTelegramAlert(bias.label, bias.score, goldPrice);
+        sendPush({
+          title: `Bias flip → ${bias.label}`,
+          body: `Composite ${bias.score > 0 ? '+' : ''}${bias.score}/100 · Gold $${goldPrice.toFixed(2)}`,
+          tag: `bias-flip-${bias.label}-${Math.floor(Date.now() / 600000)}`,
+          url: '/'
+        }, { ttl: 300, urgency: 'high' });
       }
       lastSentBiasLabel = bias.label;
     }

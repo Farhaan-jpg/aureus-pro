@@ -16,6 +16,13 @@ import {
   resolveVoiceFor,
   speakGreeting
 } from '../utils/buddyMode';
+import {
+  getPushState,
+  isPushSupported,
+  subscribePush,
+  unsubscribePush,
+  sendTestPush
+} from '../utils/webPush';
 
 export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
   const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'telegram' | 'terminal' | 'buddy'
@@ -32,6 +39,59 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
   const [buddyConfig, setBuddyConfig] = useState(getBuddySettings());
   const characters = getCharacters();
   const currentChar = characters.find((c) => c.id === buddyConfig.characterId) || characters[0];
+
+  // Web Push State
+  const [pushState, setPushState] = useState({ supported: isPushSupported(), subscribed: false, permission: 'denied', checked: false });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
+
+  const refreshPushState = async () => {
+    const st = await getPushState();
+    setPushState({ ...st, checked: true });
+    return st;
+  };
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    setPushResult(null);
+    try {
+      await subscribePush();
+      await refreshPushState();
+      setPushResult({ success: true, message: 'Push notifications enabled on this device.' });
+    } catch (err) {
+      setPushResult({ success: false, message: err.message || 'Could not enable push notifications.' });
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushBusy(true);
+    setPushResult(null);
+    try {
+      await unsubscribePush();
+      await refreshPushState();
+      setPushResult({ success: true, message: 'Push notifications disabled.' });
+    } catch (err) {
+      setPushResult({ success: false, message: err.message || 'Could not disable push notifications.' });
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleTestPush = async () => {
+    setPushBusy(true);
+    setPushResult(null);
+    try {
+      await sendTestPush();
+      await refreshPushState();
+      setPushResult({ success: true, message: 'Test notification sent — check your device.' });
+    } catch (err) {
+      setPushResult({ success: false, message: err.message || 'Could not send test push.' });
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   // Telegram Settings State
   const [telegramConfig, setTelegramConfig] = useState({
@@ -55,6 +115,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
     setVoiceConfig(getVoiceSettings());
     setAvailableVoices(getAvailableVoices());
     setBuddyConfig(getBuddySettings());
+    refreshPushState();
 
     // Keep the buddy voice list warm as Chrome loads voices asynchronously
     const onVoices = () => setAvailableVoices(getAvailableVoices());
@@ -472,6 +533,79 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                   </div>
                 </div>
               )}
+
+              {/* Web Push Notifications (phone/browser) */}
+              <div className="mt-2 pt-3 border-t border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-white uppercase tracking-wider">Phone Push Notifications</div>
+                    <div className="text-[11px] text-slate-400">Red-folder, bias flips and breaking news — even with the app closed</div>
+                  </div>
+                  {pushState.checked && pushState.supported && (
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                      pushState.subscribed
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40'
+                        : 'text-slate-400 border-white/10 bg-slate-900'
+                    }`}>
+                      {pushState.subscribed ? 'ACTIVE' : 'OFF'}
+                    </span>
+                  )}
+                </div>
+
+                {!pushState.checked ? (
+                  <div className="text-[11px] font-mono text-slate-500 animate-pulse">CHECKING PUSH CAPABILITY…</div>
+                ) : !pushState.supported ? (
+                  <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-600/30 text-[11px] font-mono text-amber-300">
+                    Not supported here. Use the latest Chrome / Edge / Safari (iOS 16.4+) on this device.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {pushState.subscribed ? (
+                      <button
+                        type="button"
+                        onClick={handleDisablePush}
+                        disabled={pushBusy}
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-mono font-bold bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 active:scale-95 transition disabled:opacity-50"
+                      >
+                        {pushBusy ? '…' : 'DISABLE PUSH'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleEnablePush}
+                        disabled={pushBusy}
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-mono font-bold bg-sky-500 hover:bg-sky-400 text-black active:scale-95 transition disabled:opacity-50"
+                      >
+                        {pushBusy ? '…' : 'ENABLE PUSH'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleTestPush}
+                      disabled={pushBusy}
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-mono font-bold bg-white/5 border border-white/15 text-slate-200 hover:bg-white/10 active:scale-95 transition disabled:opacity-50"
+                    >
+                      SEND TEST
+                    </button>
+                    {pushState.permission === 'denied' && !pushState.subscribed && (
+                      <span className="text-[10px] text-rose-400 font-mono">Permission blocked — allow notifications for this site in your browser.</span>
+                    )}
+                  </div>
+                )}
+
+                {pushResult && (
+                  <div className={`p-2.5 rounded-lg text-[11px] font-mono flex items-start gap-2 ${
+                    pushResult.success
+                      ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-950/40 border border-rose-500/30 text-rose-300'
+                  }`}>
+                  {pushResult.success
+                    ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                    : <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />}
+                    <span>{pushResult.message}</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

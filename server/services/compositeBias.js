@@ -13,7 +13,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     label: 'NEUTRAL',
     confidence: 0,
     actionable: false,
-    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0, structure: 0, trend: 0 },
+    breakdown: { macro: 0, commodity: 0, volatility: 0, ictSweeps: 0, cot: 0, retail: 0, news: 0, etf: 0, geo: 0, structure: 0, trend: 0, centralBank: 0 },
     used: []
   };
 
@@ -26,6 +26,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   const etf = extras.etf || null;
   const geo = extras.geo || null;
   const timeframes = extras.timeframes || null;
+  const centralBankWatch = extras.centralBank || null;
 
   const dxyChange = assets.DXY?.changePercent;
   const realYield = marketData.realYield10Y;
@@ -180,19 +181,28 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     trendSubScore = clamp(Math.round(net * 0.85));
   }
 
-  const weights = {
-    macro: 0.14,
+  // ── Central-bank / official-sector demand (news-watch) ───────────────
+  const centralBankSubScore = clamp(centralBankWatch?.watch?.score ?? 0);
+
+  const DEFAULT_WEIGHTS = {
+    macro: 0.13,
     commodity: 0.08,
-    volatility: 0.10,
+    volatility: 0.09,
     ictSweeps: 0.08,
     cot: 0.08,
     retail: 0.06,
-    news: 0.12,
+    news: 0.10,
     etf: 0.08,
     geo: 0.06,
     structure: 0.10,
-    trend: 0.10
+    trend: 0.09,
+    centralBank: 0.05
   };
+
+  // Feedback-loop calibration: when the bias-accuracy tracker has enough
+  // resolved votes it supplies re-weighted channel mix (per active session).
+  // Tests and non-wired callers keep the shipped defaults.
+  const weights = extras.calibratedWeights || DEFAULT_WEIGHTS;
 
   const totalScore =
     macroSubScore * weights.macro +
@@ -205,7 +215,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     etfSubScore * weights.etf +
     geoSubScore * weights.geo +
     structureSubScore * weights.structure +
-    trendSubScore * weights.trend;
+    trendSubScore * weights.trend +
+    centralBankSubScore * weights.centralBank;
 
   const finalScore = Math.round(clamp(totalScore));
   let label = 'NEUTRAL';
@@ -214,7 +225,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   else if (finalScore <= -55) label = 'STRONG SELL';
   else if (finalScore <= -20) label = 'SELL';
 
-  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore, trendSubScore];
+  const subScores = [macroSubScore, commoditySubScore, volatilitySubScore, ictSubScore, cotSubScore, retailSubScore, newsSubScore, etfSubScore, geoSubScore, structureSubScore, trendSubScore, centralBankSubScore];
   const sameSign = subScores.filter((s) => (finalScore >= 0 ? s > 0 : s < 0)).length;
   const dataPoints = [
     dxyChange != null,
@@ -227,7 +238,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     structureSubScore !== 0,
     vreg?.live,
     longCorr?.live,
-    timeframes?.live
+    timeframes?.live,
+    centralBankWatch?.watch?.live
   ].filter(Boolean).length;
   const confidence = Math.min(92, Math.max(20, Math.round(18 + dataPoints * 7 + (sameSign / subScores.length) * 28)));
 
@@ -253,7 +265,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
       etf: Math.round(etfSubScore),
       geo: Math.round(geoSubScore),
       structure: Math.round(structureSubScore),
-      trend: Math.round(trendSubScore)
+      trend: Math.round(trendSubScore),
+      centralBank: Math.round(centralBankSubScore)
     }
   };
 }

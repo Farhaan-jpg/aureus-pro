@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateCompositeBias } from '../server/services/compositeBias.js';
+import { scoreCentralBankWatch } from '../server/services/centralBank.js';
 
 function freshMarket(overrides = {}) {
   return {
@@ -55,7 +56,7 @@ test('stale tape flips actionable to false even while open', () => {
   assert.equal(out.actionable, false);
 });
 
-test('breakdown exposes all 11 channels including trend', () => {
+test('breakdown exposes all 12 channels including trend and central bank', () => {
   const out = calculateCompositeBias(
     freshMarket(),
     [],
@@ -63,10 +64,32 @@ test('breakdown exposes all 11 channels including trend', () => {
     { timeframes: { live: true, confluence: { bullPct: 80, bearPct: 10 } } }
   );
   const keys = Object.keys(out.breakdown);
-  assert.equal(keys.length, 11);
+  assert.equal(keys.length, 12);
   assert.ok(keys.includes('trend'));
   assert.ok(keys.includes('structure'));
   assert.ok(keys.includes('macro'));
+  assert.ok(keys.includes('centralBank'));
+});
+
+test('central bank watch steers the channel directionally', () => {
+  const bull = calculateCompositeBias(freshMarket(), [], null, { centralBank: { watch: { score: 55 } } });
+  const bear = calculateCompositeBias(freshMarket(), [], null, { centralBank: { watch: { score: -55 } } });
+  assert.ok(bull.breakdown.centralBank > 0);
+  assert.ok(bull.breakdown.centralBank > bear.breakdown.centralBank);
+});
+
+test('central bank watch decays headlines on the 14-day half-life', () => {
+  const now = Date.now();
+  const headline = 'PBOC adds gold to reserves as China continues bullion diversification';
+  const fresh = scoreCentralBankWatch([
+    { title: headline, sentiment: 'BULLISH', impact: 3, pubDate: new Date(now - 3600000).toISOString() }
+  ]);
+  const stale = scoreCentralBankWatch([
+    { title: headline, sentiment: 'BULLISH', impact: 3, pubDate: new Date(now - 30 * 86400000).toISOString() }
+  ]);
+  assert.equal(fresh.live, true);
+  assert.ok(fresh.score > 0);
+  assert.ok(Math.abs(stale.score) < Math.abs(fresh.score), 'aged headline should carry less weight');
 });
 
 test('trend channel pushes score toward bullish alignment', () => {

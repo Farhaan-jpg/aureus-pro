@@ -7,6 +7,8 @@ import { getCotData } from '../services/cotData.js';
 import { getGoldEtfFlows } from '../services/goldEtfFlows.js';
 import { getGeoRisk } from '../services/geoRisk.js';
 import { getTimeframeMatrix } from '../services/timeframeMatrix.js';
+import { getCalibratedWeights } from '../services/biasHistory.js';
+import { refreshCentralBankWatch } from '../services/centralBank.js';
 
 const sseClients = new Set();
 const MAX_SSE_CLIENTS = 100;
@@ -31,11 +33,14 @@ export function sseHandler(req, res) {
     try {
       const classifiedNews = classifyAllNews(getCachedNews());
       const retail = getRetailSentiment(cached.goldSpot?.price || null);
+      const centralBank = refreshCentralBankWatch(classifiedNews);
       const bias = calculateCompositeBias(cached, classifiedNews, retail, {
         cot: getCotData(),
         etf: getGoldEtfFlows(),
         geo: getGeoRisk(),
-        timeframes: getTimeframeMatrix()
+        timeframes: getTimeframeMatrix(),
+        centralBank,
+        calibratedWeights: getCalibratedWeights(cached.session)
       });
 
       res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({

@@ -19,6 +19,28 @@ const DEFAULT_SETTINGS = {
 
 let currentSettings = { ...DEFAULT_SETTINGS };
 
+// Per-kind audible cooldowns: stop the same development from re-speaking on
+// every refresh. Shared by both the default and Buddy paths (checked before
+// announce()), keyed by payload so distinct events still sound.
+const COOLDOWN_WINDOW = {
+  breakingNews: 30 * 60 * 1000,
+  biasFlips: 90 * 1000,
+  handleSweeps: 90 * 1000
+};
+const lastSpokenAt = new Map();
+
+function withinCooldown(kind, key) {
+  if (lastSpokenAt.size > 600) {
+    const first = lastSpokenAt.keys().next().value;
+    if (first) lastSpokenAt.delete(first);
+  }
+  const now = Date.now();
+  const stamped = lastSpokenAt.get(`${kind}|${key}`) || 0;
+  if (now - stamped < (COOLDOWN_WINDOW[kind] ?? 0)) return true;
+  lastSpokenAt.set(`${kind}|${key}`, now);
+  return false;
+}
+
 // Load settings from localStorage
 export function getVoiceSettings() {
   if (typeof window === 'undefined') return currentSettings;
@@ -239,6 +261,7 @@ export function speakEventImminent(eventTitle, minutesRemaining) {
 // 3. Breaking High-Impact Bullion News Alert
 export function speakBreakingNews(headline, sentiment) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.breakingNews) return;
+  if (withinCooldown('breakingNews', String(headline).slice(0, 80))) return;
   const sentimentNote = sentiment === 'BULLISH' ? 'Bullish for gold.' : sentiment === 'BEARISH' ? 'Bearish pressure on bullion.' : '';
   if (announce('breakingNews', { headline, sentiment: sentimentNote })) return;
   speakAlert(`Breaking gold news: ${headline}. ${sentimentNote}`);
@@ -247,6 +270,7 @@ export function speakBreakingNews(headline, sentiment) {
 // 4. Institutional Bias Directional Flip Alert
 export function speakBiasFlip(newBiasLabel, score) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.biasFlips) return;
+  if (withinCooldown('biasFlips', `${newBiasLabel}|${Math.round(score / 5)}`)) return;
   if (announce('biasFlip', { label: newBiasLabel, score })) return;
   speakAlert(`Market flow shift: Institutional composite bias flipped to ${newBiasLabel}. Score ${score}.`);
 }
@@ -254,6 +278,7 @@ export function speakBiasFlip(newBiasLabel, score) {
 // 5. 5-Minute Psychological Handle Sweep Alert ($10 Round Numbers)
 export function speakHandleSweep(priceHandle) {
   if (!currentSettings.enabled || !currentSettings.alertEvents?.handleSweeps) return;
+  if (withinCooldown('handleSweeps', String(priceHandle))) return;
   if (announce('sweep', { handle: priceHandle })) return;
   speakAlert(`Gold spot testing key handle: ${priceHandle} dollars. Watch for five minute liquidity sweep.`);
 }

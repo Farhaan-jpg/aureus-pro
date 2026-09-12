@@ -29,6 +29,25 @@ function pct(x) {
   return `${Math.round(x * 100)}%`;
 }
 
+const CHANNEL_ORDER = ['macro', 'commodity', 'volatility', 'ictSweeps', 'cot', 'retail', 'news', 'etf', 'geo', 'structure', 'trend', 'centralBank'];
+function useChannelCalibration() {
+  const [cal, setCal] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch('/api/channel-accuracy?horizonMinutes=60');
+        const d = await r.json();
+        if (!cancelled) setCal(d);
+      } catch (err) {}
+    };
+    load();
+    const t = setInterval(load, 300000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+  return cal;
+}
+
 function Freshness({ label, live, detail, kind = 'green' }) {
   const color = kind === 'warn' ? 'text-amber-400' : live ? 'text-emerald-400' : 'text-rose-400';
   return (
@@ -60,6 +79,8 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
   const calCount = calendar?.events?.length ?? 0;
   const accuracy = useBiasAccuracy();
   const totalResolved = accuracy ? Object.values(accuracy).reduce((a, h) => a + (h?.overall?.resolved ?? 0), 0) : 0;
+  const calibration = useChannelCalibration();
+  const tunedCount = calibration ? Object.values(calibration.channels || {}).filter((c) => c.tuned).length : 0;
 
   const rowCls = "bg-[#0b0e15] border rounded p-2 flex flex-col gap-1";
   const labelCls = "text-[9px] font-mono text-slate-500 uppercase";
@@ -156,6 +177,48 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
                     {h.overall.unresolved > 0 && <span className="text-slate-600"> · {h.overall.unresolved} skirted</span>}
                     {h.overall.avgPnlPct != null && <span className="text-slate-500"> · {h.overall.avgPnlPct > 0 ? '+' : ''}{h.overall.avgPnlPct}%/call</span>}
                   </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Channel calibration (feedback-loop tuning of composite weights) */}
+      <div className="mt-2 bg-[#090b10] border border-white/5 rounded p-2">
+        <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 uppercase mb-1.5">
+          <span className="flex items-center gap-1"><Shuffle className="w-3 h-3 text-indigo-400" /> Channel weight calibration</span>
+          <span className={tunedCount === 0 ? 'text-slate-600' : 'text-indigo-300'}>
+            {tunedCount} tuned tracks
+          </span>
+        </div>
+        {calibration == null ? (
+          <div className="text-[10px] font-mono text-slate-600">loading…</div>
+        ) : !calibration.live ? (
+          <div className="text-[10px] font-mono text-slate-500">
+            WAITING ON CHANNEL TRACES — weights are still the bias defaults; snapshots start recording on next bias publish.
+          </div>
+        ) : calibration.snapshotsWithChannels < calibration.minVotes ? (
+          <div className="text-[10px] font-mono text-slate-500">
+            TRACING — {calibration.snapshotsWithChannels}/{calibration.minVotes} setups needed before weights auto-tune.
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-1">
+            {CHANNEL_ORDER.map((key) => {
+              const c = calibration.channels?.[key];
+              const weight = calibration.weights?.[key];
+              const tuned = c?.tuned;
+              const hue = !c ? 'text-slate-600' : c.hitRate == null ? 'text-slate-500' : c.hitRate >= 0.55 ? 'text-emerald-400' : c.hitRate >= 0.48 ? 'text-amber-400' : 'text-rose-400';
+              return (
+                <div key={key} className="rounded bg-[#0b0e15] border border-white/5 px-1.5 py-1">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[8px] font-mono uppercase ${tuned ? 'text-indigo-300' : 'text-slate-500'}`}>{key}</span>
+                    {tuned && <span className="text-[7px] font-mono text-indigo-400">TUNED</span>}
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] font-mono tabular-nums">
+                    <span className={hue}>{c?.hitRate != null ? pct(c.hitRate) : '—'}</span>
+                    <span className="text-slate-400">{weight != null ? weight.toFixed(2) : '—'}</span>
+                  </div>
                 </div>
               );
             })}

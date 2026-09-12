@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveAccuracy, countUnresolved } from '../server/services/biasHistory.js';
+import { resolveAccuracy, countUnresolved, resolveChannelAccuracy, getCalibratedWeights } from '../server/services/biasHistory.js';
 import { titleTokens, isNearDuplicate } from '../server/services/rssNews.js';
 
 const T0 = Date.UTC(2026, 8, 10, 12); // Thu Sep 10 2026 12:00Z
@@ -75,4 +75,61 @@ test('isNearDuplicate does not conflate opposing stories', () => {
   const bull = titleTokens('Gold rises as dollar slips, hits record high');
   const bear = titleTokens('Gold falls sharply as dollar strengthens');
   assert.equal(isNearDuplicate(bull, bear), false);
+});
+
+const snapChat = (minOffset, price, score, channels) => ({
+  t: T0 + minOffset * 60000,
+  price,
+  score,
+  label: score > 0 ? 'BUY' : 'SELL',
+  confidence: 80,
+  actionable: true,
+  channels
+});
+
+test('resolveChannelAccuracy credits channels whose vote matched the move', () => {
+  // +20 call resolves up (fwd 102 > 100): macro(+), news(-) voted, macro right.
+  const snaps = [
+    snapChat(0, 100, +20, { macro: 40, news: -25 }),
+    snapChat(70, 102, 0, { macro: 0, news: 0 })
+  ];
+  const acc = resolveChannelAccuracy(snaps, 60 * 60000);
+  assert.equal(acc.macro.votes, 1);
+  assert.equal(acc.macro.hits, 1);
+  assert.equal(acc.news.votes, 1);
+  assert.equal(acc.news.hits, 0);
+});
+
+test('resolveChannelAccuracy skips weak (sub-threshold) votes', () => {
+  const snaps = [
+    snapChat(0, 100, +20, { macro: 3, trend: -40 }),
+    snapChat(70, 99, 0, {})
+  ];
+  const acc = resolveChannelAccuracy(snaps, 60 * 60000);
+  assert.equal(acc.macro, undefined); // +3 not a vote
+  assert.equal(acc.trend.votes, 1);
+  assert.equal(acc.trend.hits, 1); // -40 vote matched the -1 move
+});
+
+test('getCalibratedWeights stays at defaults without enough channel votes', () => {
+  const snaps = [
+    snapChat(0, 100, +20, { macro: 40 }),
+    snapChat(70, 102, 0, {})
+  ];
+  const w = getCalibratedWeights(null, 60 * 60000, snaps);
+  assert.ok(Math.abs(w.trend - 0.09) < 0.001, 'defaults preserved (no live module state leaks)');
+  assert.ok(Math.abs(Object.values(w).reduce((a, b) => a + b, 0) - 1) < 0.001);
+});
+
+test('getCalibratedWeights tunes a proven channel and renormalizes', () => {
+  const snaps = [];
+  // 40 resolved macro votes, all correct -> macro multiplier -> 1.7 (bounded)
+  for (let i = 0; i < 40; i++) {
+    snaps.push(snapChat(i * 2, 100 + i, +20, { macro: 40 }));
+    snaps.push(snapChat(i * 2 + 71, 100 + i + 1.5, 0, {}));
+  }
+  const w = getCalibratedWeights(null, 60 * 60000, snaps);
+  const sum = Object.values(w).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(sum - 1) < 0.001, 'weights must stay normalized');
+  assert.ok(w.macro > 0.14, `proven macro channel should be amplified (${w.macro})`);
 });

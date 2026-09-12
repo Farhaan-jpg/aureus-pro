@@ -4,6 +4,7 @@ import MobileNav from './components/MobileNav';
 import MacroDriversGrid from './components/MacroDriversGrid';
 import CompositeBiasMeter from './components/CompositeBiasMeter';
 import NewsSentimentFeed from './components/NewsSentimentFeed';
+import SessionRecapPanel from './components/SessionRecapPanel';
 import OrderBookSentiment from './components/OrderBookSentiment';
 import EconomicCalendar from './components/EconomicCalendar';
 import MultiTimeframeMatrix from './components/MultiTimeframeMatrix';
@@ -49,6 +50,7 @@ export default function App() {
   const [timeframes, setTimeframes] = useState(null);
   const [geo, setGeo] = useState(null);
   const [etf, setEtf] = useState(null);
+  const [sessionRecap, setSessionRecap] = useState(null);
 
   const [isLive, setIsLive] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -183,6 +185,12 @@ export default function App() {
   useEffect(() => {
     loadInitialData();
 
+    // Populate the recap panel with the latest known recap before the next close.
+    fetch('/api/session-recap')
+      .then((r) => r.json())
+      .then((d) => { if (d?.recap?.summaryText) setSessionRecap(d.recap); })
+      .catch(() => {});
+
     let eventSource = null;
     let reconnectTimeout = null;
 
@@ -266,6 +274,13 @@ export default function App() {
           if (data.timeframes) setTimeframes(data.timeframes);
           if (data.geo) setGeo(data.geo);
           if (data.etf) setEtf(data.etf);
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('SESSION_RECAP', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.summaryText) setSessionRecap(data);
         } catch (err) {}
       });
 
@@ -564,6 +579,11 @@ export default function App() {
         </section>
 
         <section className={`anim-panel ${vis('news')}`} style={stagger(6)}>
+          {sessionRecap && (
+            <div className="mb-3">
+              <SessionRecapPanel recap={sessionRecap} />
+            </div>
+          )}
           <NewsSentimentFeed news={news} />
         </section>
 
