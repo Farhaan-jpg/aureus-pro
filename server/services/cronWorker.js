@@ -22,7 +22,7 @@ import { sendRedFolderTelegramAlert,
 } from './telegramBot.js';
 import { getMarketState } from './marketState.js';
 import { recordError } from './errorLog.js';
-import { recordBiasSnapshot } from './biasHistory.js';
+import { recordBiasSnapshot, getBiasAccuracy } from './biasHistory.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -208,7 +208,8 @@ export function startBackgroundWorker() {
           bias,
           calendar: await getEconomicCalendar(),
           geo: getGeoRisk(),
-          retail: getRetailSentiment(marketData.goldSpot.price)
+          retail: getRetailSentiment(marketData.goldSpot.price),
+          accuracy: getBiasAccuracy(60 * 60000)
         });
         console.log('[Aureus Worker] Daily Telegram briefing dispatched.');
       }

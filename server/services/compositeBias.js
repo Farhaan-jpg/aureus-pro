@@ -138,8 +138,8 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     const upMom = (gold.changePercent || 0) > 0.3;
     const downMom = (gold.changePercent || 0) < -0.3;
 
-    if (nearestRes == null && (levels.pdh != null && currentPrice > levels.pdh) && (levels.pwh == null || levels.pwh == null || currentPrice > (levels.pwh || -Infinity))) {
-      // Cleared daily (and weekly) resistance engines -> breakout continuation
+    if (nearestRes == null && (levels.pdh != null && currentPrice > levels.pdh) && (levels.pwh == null || currentPrice > levels.pwh)) {
+      // Cleared daily (and weekly, when present) resistance -> breakout continuation
       structureScore = upMom ? 16 : 10;
     } else if (nearestSup == null && (levels.pdl != null && currentPrice < levels.pdl)) {
       structureScore = downMom ? -16 : -10;

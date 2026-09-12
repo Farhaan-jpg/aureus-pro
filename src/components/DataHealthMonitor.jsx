@@ -153,6 +153,7 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
                   <span className="text-slate-400">{m >= 60 ? `${m / 60}h` : `${m}m`} horizon</span>
                   <span className={hue}>
                     {h.overall.hitRate == null ? '—' : pct(h.overall.hitRate)} hit · {h.overall.resolved} calls
+                    {h.overall.unresolved > 0 && <span className="text-slate-600"> · {h.overall.unresolved} skirted</span>}
                     {h.overall.avgPnlPct != null && <span className="text-slate-500"> · {h.overall.avgPnlPct > 0 ? '+' : ''}{h.overall.avgPnlPct}%/call</span>}
                   </span>
                 </div>

@@ -254,6 +254,13 @@ export async function sendDailyBriefingTelegramAlert(snap) {
     `TV-WS ${dh.tvWs ? '✅' : '⚠'} · spread $${cross.spread ?? '—'}${cross.discrepancy ? ' ⚠' : ''} acr ${cross.sources ?? 0} src`
   ].join('\n');
 
+  // Bias outcome track record — the honest scoreboard for the composite model.
+  const acc = snap.accuracy || {};
+  const o = acc.overall || {};
+  const accLine = o.resolved > 0
+    ? `${(o.hitRate * 100).toFixed(0)}% hit (${o.resolved} calls, ${o.unresolved ?? 0} unresolved skirted) · avg ${o.avgPnlPct == null ? '—' : (o.avgPnlPct > 0 ? '+' : '') + o.avgPnlPct.toFixed(2)}%/call · 1H window since ${acc.windowStart ? new Date(acc.windowStart).toISOString().slice(0, 10) : '—'}`
+    : 'COLLECTING — needs ~24h of live sessions for the first 1H verdicts';
+
   const message = `
 🌅 ☕ <b>AUREUS PRO DAILY BRIEFING</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -274,6 +281,9 @@ P <b>$${fmt(piv.p, 0)}</b> | R1 <b>$${fmt(piv.r1, 0)}</b> | S1 <b>$${fmt(piv.s1,
 
 <b>🩺 Feed Health:</b>
 ${feedLine}
+
+<b>🎯 Bias Track Record (1H):</b>
+${accLine}
 
 <b>📅 Next Releases:</b>
 ${catLines}
