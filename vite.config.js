@@ -20,5 +20,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split rarely-changing vendors so app deploys reuse cached chunks.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('tradingview')) return 'vendor-tradingview';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('react')) return 'vendor-react';
+          return 'vendor';
+        },
+      },
+    },
   },
 });
