@@ -1,5 +1,33 @@
-import React from 'react';
-import { Activity, Wifi, WifiOff, Database, Clock, Shuffle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Activity, Wifi, WifiOff, Database, Clock, Shuffle, Target } from 'lucide-react';
+
+// Bias accuracy is measured server-side from persisted snapshots; this block
+// polls it so the feedback loop is visible where the operator already looks.
+const HORIZONS = [60, 240, 1440];
+function useBiasAccuracy() {
+  const [agg, setAgg] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const entries = await Promise.all(HORIZONS.map(async (m) => {
+          const r = await fetch(`/api/bias-accuracy?horizonMinutes=${m}`);
+          return [m, await r.json()];
+        }));
+        if (!cancelled) setAgg(Object.fromEntries(entries));
+      } catch (err) {}
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+  return agg;
+}
+
+function pct(x) {
+  if (x == null || (!Number.isFinite(x) && x !== 0)) return '—';
+  return `${Math.round(x * 100)}%`;
+}
 
 function Freshness({ label, live, detail, kind = 'green' }) {
   const color = kind === 'warn' ? 'text-amber-400' : live ? 'text-emerald-400' : 'text-rose-400';
@@ -30,6 +58,8 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
   const marketOpen = marketData?.marketState?.open !== false;
   const newsFresh = news?.length && news[0]?.pubDate ? ageLabel(news[0].pubDate) : '';
   const calCount = calendar?.events?.length ?? 0;
+  const accuracy = useBiasAccuracy();
+  const totalResolved = accuracy ? Object.values(accuracy).reduce((a, h) => a + (h?.overall?.resolved ?? 0), 0) : 0;
 
   const rowCls = "bg-[#0b0e15] border rounded p-2 flex flex-col gap-1";
   const labelCls = "text-[9px] font-mono text-slate-500 uppercase";
@@ -98,6 +128,38 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
         <Freshness label="Multi-TF matrix (GC=F)" live={Boolean(timeframes?.live)} detail={ageLabel(timeframes?.lastUpdated)} />
         <Freshness label="News RSS (5 sources)" live={news?.length > 0} detail={newsFresh} />
         <Freshness label="Economic calendar" live={calCount > 0} kind={calendar?.feedSource === 'benchmark' ? 'warn' : 'green'} detail={`${calCount} events · ${calendar?.feedSource === 'forexfactory' ? 'FF live' : 'est.'}${ageLabel(calendar?.lastUpdated)}`} />
+      </div>
+
+      {/* Bias outcome accuracy (server-resolved from persisted snapshots) */}
+      <div className="mt-2 bg-[#090b10] border border-white/5 rounded p-2">
+        <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 uppercase mb-1.5">
+          <span className="flex items-center gap-1"><Target className="w-3 h-3 text-cyan-400" /> Bias outcome accuracy</span>
+          <span className={totalResolved === 0 ? 'text-slate-600' : 'text-slate-500'}>{totalResolved} resolved calls</span>
+        </div>
+        {accuracy == null ? (
+          <div className="text-[10px] font-mono text-slate-600">loading…</div>
+        ) : totalResolved === 0 ? (
+          <div className="text-[10px] font-mono text-slate-500">
+            COLLECTING — measures once live sessions accumulate (≤24h to first 1H verdicts)
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {HORIZONS.map((m) => {
+              const h = accuracy[m];
+              if (!h) return null;
+              const hue = h.overall.hitRate == null ? 'text-slate-500' : h.overall.hitRate >= 0.55 ? 'text-emerald-400' : h.overall.hitRate >= 0.48 ? 'text-amber-400' : 'text-rose-400';
+              return (
+                <div key={m} className="flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-slate-400">{m >= 60 ? `${m / 60}h` : `${m}m`} horizon</span>
+                  <span className={hue}>
+                    {h.overall.hitRate == null ? '—' : pct(h.overall.hitRate)} hit · {h.overall.resolved} calls
+                    {h.overall.avgPnlPct != null && <span className="text-slate-500"> · {h.overall.avgPnlPct > 0 ? '+' : ''}{h.overall.avgPnlPct}%/call</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
