@@ -83,19 +83,28 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   const retailLongPercent = retailPositioning?.live ? retailPositioning.longPercentage : null;
   const retailSubScore = retailLongPercent != null ? clamp((50 - retailLongPercent) * 2.2) : 0;
 
+  // News channel: fade headlines out over time so last week's CPI doesn't
+  // keep steering today's bias at full strength (~5.5h half-life). Decay scales
+  // each headline's raw contribution; the average is taken over headline count
+  // so an all-fresh feed scores exactly like the pre-decay behavior.
+  const nowMs = Date.now();
   let newsTotal = 0;
-  let newsCount = 0;
-  if (newsItems?.length) {
-    for (const item of newsItems.slice(0, 15)) {
+  const newsWindow = (newsItems?.length ? newsItems.slice(0, 15) : []);
+  if (newsWindow.length) {
+    for (const item of newsWindow) {
       const impactMultiplier = item.impact || 2;
+      let decay = 1;
+      if (item.pubDate) {
+        const ageHours = Math.max(0, (nowMs - new Date(item.pubDate).getTime()) / 3600000);
+        decay = Math.exp(-ageHours / 8);
+      }
       let scoreVal = 0;
       if (item.sentiment === 'BULLISH') scoreVal = 18 * impactMultiplier;
       else if (item.sentiment === 'BEARISH') scoreVal = -18 * impactMultiplier;
-      newsTotal += scoreVal;
-      newsCount++;
+      newsTotal += scoreVal * decay;
     }
   }
-  const newsSubScore = newsCount > 0 ? clamp(newsTotal / newsCount) : 0;
+  const newsSubScore = newsWindow.length > 0 ? clamp(newsTotal / newsWindow.length) : 0;
 
   let etfScore = 0;
   if (etf?.live) {
@@ -214,7 +223,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     cotPercentile != null,
     etf?.live,
     geo?.live,
-    newsCount > 0,
+    newsWindow.length > 0,
     structureSubScore !== 0,
     vreg?.live,
     longCorr?.live,

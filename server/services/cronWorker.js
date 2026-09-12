@@ -102,6 +102,23 @@ export function startBackgroundWorker() {
     scheduleTickBroadcast();
   }, config.marketRefreshMs);
 
+  // When the weekly close ends and the tap reopens, stale Friday pivots must
+  // not steer the first minutes of Sunday — refresh levels immediately.
+  let wasMarketOpen = null;
+  setInterval(async () => {
+    try {
+      const ms = getMarketState();
+      if (ms.open && wasMarketOpen === false) {
+        console.log('[Aureus Worker] Market reopened — refreshing key levels.');
+        await refreshKeyLevels();
+        scheduleTickBroadcast();
+      }
+      wasMarketOpen = ms.open;
+    } catch (err) {
+      recordError('reopenRefresh', err?.message);
+    }
+  }, 15000);
+
   setInterval(async () => {
     try {
       const rawNews = await aggregateAllNews();

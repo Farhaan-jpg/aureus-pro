@@ -91,3 +91,13 @@ test('bias is neutral when nothing moves', () => {
   assert.ok(out.score >= -20 && out.score <= 20);
   assert.equal(out.label, 'NEUTRAL');
 });
+
+test('news impact fades as headlines age (5.5h half-life)', () => {
+  const now = Date.now();
+  const freshNews = [{ title: 'CPI hot', sentiment: 'BEARISH', impact: 5, pubDate: new Date(now - 5 * 60000).toISOString() }];
+  const oldNews = [{ title: 'CPI hot', sentiment: 'BEARISH', impact: 5, pubDate: new Date(now - 30 * 3600000).toISOString() }];
+  const didAgeDecay = calculateCompositeBias(freshMarket(), freshNews, null, {}).breakdown.news;
+  const aged = calculateCompositeBias(freshMarket(), oldNews, null, {}).breakdown.news;
+  assert.ok(Math.abs(aged) < Math.abs(didAgeDecay), `aged=${aged} should be smaller than fresh=${didAgeDecay}`);
+  assert.ok(didAgeDecay !== 0, 'fresh headline should move the news channel');
+});

@@ -15,11 +15,38 @@ import { refreshGoldEtfFlows, getGoldEtfFlows } from '../services/goldEtfFlows.j
 import { refreshGeoRisk, getGeoRisk } from '../services/geoRisk.js';
 import { refreshFredMacro, getFredMacro } from '../services/fredMacro.js';
 import { refreshTimeframeMatrix, getTimeframeMatrix } from '../services/timeframeMatrix.js';
+import { getCachedCalendar } from '../services/economicCalendar.js';
 import { getMarketState } from '../services/marketState.js';
 import { getRecentErrors, clearErrors } from '../services/errorLog.js';
 import { getClientCount } from './sse.js';
 
 const router = Router();
+
+// Minimal in-memory throttle so the open API can't be hammered/scraped.
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 120;
+const hits = new Map();
+router.use((req, res, next) => {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const bucket = hits.get(ip);
+  if (!bucket || now - bucket.start > RATE_WINDOW_MS) {
+    hits.set(ip, { start: now, count: 1 });
+    if (hits.size > 500) {
+      for (const [k, v] of hits) {
+        if (now - v.start > RATE_WINDOW_MS) hits.delete(k);
+      }
+    }
+    next();
+    return;
+  }
+  bucket.count++;
+  if (bucket.count > RATE_MAX) {
+    res.status(429).json({ error: 'Rate limit exceeded', retryInSec: Math.ceil((bucket.start + RATE_WINDOW_MS - now) / 1000) });
+    return;
+  }
+  next();
+});
 
 const __api_dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE_PATH = path.join(__api_dirname, '../data/terminal_settings.json');
@@ -46,9 +73,24 @@ router.get('/market-data', async (req, res) => {
 router.get('/health', (req, res) => {
   const md = getCachedMarketData();
   const geo = getGeoRisk();
-  const cal = getEconomicCalendar();
+  const errors = getRecentErrors(20);
+  const goldAgeMs = md?.dataHealth?.goldAgeMs ?? null;
+  const tvOk = md?.dataHealth?.tvWs !== false;
+  const goldFresh = goldAgeMs == null || goldAgeMs < 60000;
+  const feeds = {
+    tvWs: md?.dataHealth?.tvWs ?? null,
+    goldSource: md?.dataHealth?.goldSource ?? null,
+    goldAgeMs,
+    geo: geo?.source ?? null,
+    geoLive: geo?.live ?? null,
+    calendar: getCachedCalendar()?.feedSource ?? null,
+    etfLive: Boolean(getGoldEtfFlows()?.live),
+    fredLive: Boolean(getFredMacro()?.live),
+    timeframesLive: Boolean(getTimeframeMatrix()?.live)
+  };
+  const degraded = Boolean(errors.length) || !tvOk || !goldFresh || feeds.calendar === 'offline';
   res.json({
-    status: 'HEALTHY',
+    status: degraded ? 'DEGRADED' : 'HEALTHY',
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
     sseClients: getClientCount(),
@@ -58,18 +100,8 @@ router.get('/health', (req, res) => {
     },
     marketState: md?.marketState ?? getMarketState(),
     marketDataCached: Boolean(md),
-    feeds: {
-      tvWs: md?.dataHealth?.tvWs ?? null,
-      goldSource: md?.dataHealth?.goldSource ?? null,
-      goldAgeMs: md?.dataHealth?.goldAgeMs ?? null,
-      geo: geo?.source ?? null,
-      geoLive: geo?.live ?? null,
-      calendar: cal?.feedSource ?? null,
-      etfLive: Boolean(getGoldEtfFlows()?.live),
-      fredLive: Boolean(getFredMacro()?.live),
-      timeframesLive: Boolean(getTimeframeMatrix()?.live)
-    },
-    errors: getRecentErrors(20)
+    feeds,
+    errors
   });
 });
 

@@ -2,13 +2,13 @@ import React from 'react';
 import { Activity, Wifi, WifiOff, Database, Clock, Shuffle } from 'lucide-react';
 
 function Freshness({ label, live, detail, kind = 'green' }) {
-  const color = live ? 'text-emerald-400' : kind === 'warn' ? 'text-amber-400' : 'text-rose-400';
+  const color = kind === 'warn' ? 'text-amber-400' : live ? 'text-emerald-400' : 'text-rose-400';
   return (
     <div className="flex items-center justify-between w-full text-[10px] font-mono border-b border-white/5 py-1.5 last:border-0">
       <span className="text-slate-400">{label}</span>
       <span className={`flex items-center gap-1.5 ${color}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
-        <span className="font-bold">{live ? 'LIVE' : 'STALE'}</span>
+        <span className={`w-1.5 h-1.5 rounded-full ${kind === 'warn' ? 'bg-amber-400 animate-pulse' : live ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
+        <span className="font-bold">{kind === 'warn' ? 'FALLBACK' : live ? 'LIVE' : 'STALE'}</span>
         {detail && <span className="text-slate-500 hidden sm:inline">{detail}</span>}
       </span>
     </div>
@@ -97,7 +97,7 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
         <Freshness label="Gold ETF flows (GLD/IAU/GLDM/SGOL)" live={Boolean(etf?.live)} detail={ageLabel(etf?.lastUpdated)} />
         <Freshness label="Multi-TF matrix (GC=F)" live={Boolean(timeframes?.live)} detail={ageLabel(timeframes?.lastUpdated)} />
         <Freshness label="News RSS (5 sources)" live={news?.length > 0} detail={newsFresh} />
-        <Freshness label="Economic calendar" live={calCount > 0} detail={`${calCount} events`} />
+        <Freshness label="Economic calendar" live={calCount > 0} kind={calendar?.feedSource === 'benchmark' ? 'warn' : 'green'} detail={`${calCount} events · ${calendar?.feedSource === 'forexfactory' ? 'FF live' : 'est.'}${ageLabel(calendar?.lastUpdated)}`} />
       </div>
     </div>
   );
