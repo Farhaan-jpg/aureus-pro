@@ -23,6 +23,10 @@ import { getBiasAccuracy, getCalibratedWeights, getChannelAccuracy } from '../se
 import { refreshCentralBankWatch } from '../services/centralBank.js';
 import { getPushConfig, saveSubscription, removeSubscription, sendPush } from '../services/webPush.js';
 import { getSessionRecap } from '../services/sessionRecap.js';
+import { snapshot as getRealtimePulse } from '../services/seriesEngine.js';
+import { getNewsAccuracy, getNewsCredibility } from '../services/newsFeedback.js';
+import { getFeedSla } from '../services/feedSla.js';
+import { getSirenHistory, getActiveFactors } from '../services/confluenceSirens.js';
 
 const router = Router();
 
@@ -63,7 +67,9 @@ function buildBias(marketData, classifiedNews, retail) {
     geo: getGeoRisk(),
     timeframes: getTimeframeMatrix(),
     centralBank,
-    calibratedWeights: getCalibratedWeights(marketData.session)
+    calibratedWeights: getCalibratedWeights(marketData.session),
+    realtimePulse: getRealtimePulse(),
+    newsCredibility: getNewsCredibility()
   });
 }
 
@@ -298,6 +304,23 @@ router.post('/telegram/daily-brief', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ── Realtime accuracy surface ───────────────────────────────────────────
+router.get('/realtime-pulse', (req, res) => {
+  res.json(getRealtimePulse());
+});
+
+router.get('/news-accuracy', (req, res) => {
+  res.json(getNewsAccuracy());
+});
+
+router.get('/feed-sla', (req, res) => {
+  res.json(getFeedSla());
+});
+
+router.get('/sirens', (req, res) => {
+  res.json({ history: getSirenHistory(), active: getActiveFactors() });
 });
 
 // ── Session Recap ────────────────────────────────────────────────────────

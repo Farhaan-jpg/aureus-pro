@@ -9,6 +9,8 @@ import { getGeoRisk } from '../services/geoRisk.js';
 import { getTimeframeMatrix } from '../services/timeframeMatrix.js';
 import { getCalibratedWeights } from '../services/biasHistory.js';
 import { refreshCentralBankWatch } from '../services/centralBank.js';
+import { snapshot as pulseSnapshot } from '../services/seriesEngine.js';
+import { getNewsCredibility } from '../services/newsFeedback.js';
 
 const sseClients = new Set();
 const MAX_SSE_CLIENTS = 100;
@@ -40,14 +42,17 @@ export function sseHandler(req, res) {
         geo: getGeoRisk(),
         timeframes: getTimeframeMatrix(),
         centralBank,
-        calibratedWeights: getCalibratedWeights(cached.session)
+        calibratedWeights: getCalibratedWeights(cached.session),
+        realtimePulse: pulseSnapshot(),
+        newsCredibility: getNewsCredibility()
       });
 
       res.write(`event: TICK_UPDATE\ndata: ${JSON.stringify({
         marketData: cached,
         bias,
         retail,
-        timeframes: getTimeframeMatrix()
+        timeframes: getTimeframeMatrix(),
+        realtimePulse: pulseSnapshot()
       })}\n\n`);
     } catch (err) {}
   }

@@ -431,6 +431,32 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                     />
                     <span className="text-slate-200">5M Handle Liquidity Sweeps ($10 Levels)</span>
                   </label>
+
+                  <label className="flex items-center gap-2.5 p-2.5 rounded bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition">
+                    <input
+                      type="checkbox"
+                      checked={voiceConfig.alertEvents?.sirens ?? true}
+                      onChange={e => setVoiceConfig({
+                        ...voiceConfig,
+                        alertEvents: { ...voiceConfig.alertEvents, sirens: e.target.checked }
+                      })}
+                      className="accent-gold-500 w-4 h-4 rounded"
+                    />
+                    <span className="text-slate-200">High-Conviction Reversal Sirens</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-2.5 rounded bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition">
+                    <input
+                      type="checkbox"
+                      checked={voiceConfig.alertEvents?.eventActuals ?? true}
+                      onChange={e => setVoiceConfig({
+                        ...voiceConfig,
+                        alertEvents: { ...voiceConfig.alertEvents, eventActuals: e.target.checked }
+                      })}
+                      className="accent-gold-500 w-4 h-4 rounded"
+                    />
+                    <span className="text-slate-200">Economic Data Surprise (Actuals)</span>
+                  </label>
                 </div>
               </div>
             </div>

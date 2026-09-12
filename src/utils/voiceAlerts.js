@@ -13,7 +13,9 @@ const DEFAULT_SETTINGS = {
     redFolderImminent: true,
     breakingNews: true,
     biasFlips: true,
-    handleSweeps: true
+    handleSweeps: true,
+    sirens: true,
+    eventActuals: true
   }
 };
 
@@ -25,7 +27,9 @@ let currentSettings = { ...DEFAULT_SETTINGS };
 const COOLDOWN_WINDOW = {
   breakingNews: 30 * 60 * 1000,
   biasFlips: 90 * 1000,
-  handleSweeps: 90 * 1000
+  handleSweeps: 90 * 1000,
+  sirens: 60 * 1000,
+  eventActuals: 60 * 1000
 };
 const lastSpokenAt = new Map();
 
@@ -288,5 +292,21 @@ export function speakPriceAlert(targetPrice, condition = 'reached') {
   if (!currentSettings.enabled) return;
   const condText = condition === 'above' ? 'broken above' : condition === 'below' ? 'fallen below' : 'reached';
   speakAlert(`Price target triggered: Gold has ${condText} ${targetPrice} dollars.`);
+}
+
+// 7. Reversal Confluence Siren (3+ factors aligned)
+export function speakSiren(direction, price, factorCount) {
+  if (!currentSettings.enabled || !currentSettings.alertEvents?.sirens) return;
+  if (withinCooldown('sirens', `${direction}|${Math.round(price / 10)}`)) return;
+  if (announce('siren', { price, direction, factorCount })) return;
+  speakAlert(`High conviction reversal alert. ${factorCount} factors aligned at ${price}. Direction: ${direction}.`);
+}
+
+// 8. Released Economic Data Surprise (Actuals re-price)
+export function speakSurprise(eventTitle, direction, magnitude) {
+  if (!currentSettings.enabled || !currentSettings.alertEvents?.eventActuals) return;
+  if (withinCooldown('eventActuals', `${eventTitle}|${direction}`)) return;
+  if (announce('eventActual', { event: eventTitle, direction, magnitude })) return;
+  speakAlert(`Economic data released: ${eventTitle} surprised to the ${direction} side. ${magnitude} move expected.`);
 }
 

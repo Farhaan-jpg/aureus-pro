@@ -543,8 +543,22 @@ function fill(tpl, vars) {
   return (tpl || '').replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : m));
 }
 
+// Persona-neutral lines for realtime modules the characters do not have
+// dedicated banter for yet. They still speak with the chosen persona's voice.
+const FALLBACK_BANK = {
+  siren: [
+    'High conviction signal. Three factors aligned. Reversal confluence confirmed near {price}.',
+    'Confluence siren: multiple factors stacking at {price}. Stand by for a reversal attempt.'
+  ],
+  eventActual: [
+    'Economic data released: {event} printed {direction} versus expectations. Expect the tape to reprice.',
+    'Actuals are in for {event}. Surprise direction {direction}.'
+  ]
+};
+
 function lineFor(char, kind, vars) {
-  const bank = char?.lines?.[kind];
+  let bank = char?.lines?.[kind];
+  if ((!bank || !bank.length) && FALLBACK_BANK[kind]) bank = FALLBACK_BANK[kind];
   if (!bank || !bank.length) return null;
   return fill(bank[Math.floor(Math.random() * bank.length)], vars);
 }
@@ -568,7 +582,7 @@ export function announce(kind, vars = {}, opts = {}) {
   const line = lineFor(char, kind, vars);
   if (!line) return false;
   if (kind === 'idle' && typeof window !== 'undefined' && window.speechSynthesis?.speaking) return false;
-  const alertKinds = ['biasFlip', 'breakingNews', 'redFolder', 'sweep', 'marketOpen', 'marketClosed'];
+  const alertKinds = ['biasFlip', 'breakingNews', 'redFolder', 'sweep', 'marketOpen', 'marketClosed', 'siren', 'eventActual'];
   speakAlert(line, {
     pitch: char.pitch,
     rate: char.rate,

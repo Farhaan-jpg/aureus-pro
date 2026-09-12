@@ -124,3 +124,26 @@ test('news impact fades as headlines age (5.5h half-life)', () => {
   assert.ok(Math.abs(aged) < Math.abs(didAgeDecay), `aged=${aged} should be smaller than fresh=${didAgeDecay}`);
   assert.ok(didAgeDecay !== 0, 'fresh headline should move the news channel');
 });
+
+test('realtime pulse polarizes the structure channel', () => {
+  const bullishTape = freshMarket({ assets: { ...freshMarket().assets, GOLD: { price: 4355, changePercent: 0.5, ageMs: 8000 } } });
+  const baseline = calculateCompositeBias(bullishTape, [], null, {});
+  const pulsed = calculateCompositeBias(bullishTape, [], null, {
+    realtimePulse: {
+      live: true,
+      divergence: { type: 'BEARISH' },
+      corr: { broken: true },
+      volState: 'SQUEEZE'
+    }
+  });
+  assert.ok(pulsed.score < baseline.score, `pulsed=${pulsed.score} should be < baseline=${baseline.score}`);
+});
+
+test('news source credibility scales the news channel', () => {
+  const items = [{ title: 'Dollar drops on dovish surprise', sentiment: 'BULLISH', impact: 5, source: 'TestWire' }];
+  const unproven = calculateCompositeBias(freshMarket(), items, null, {});
+  const amplified = calculateCompositeBias(freshMarket(), items, null, { newsCredibility: { TestWire: 1.5 } });
+  const dampened = calculateCompositeBias(freshMarket(), items, null, { newsCredibility: { TestWire: 0.6 } });
+  assert.ok(Math.abs(amplified.breakdown.news) > Math.abs(unproven.breakdown.news));
+  assert.ok(Math.abs(dampened.breakdown.news) < Math.abs(unproven.breakdown.news));
+});

@@ -74,6 +74,19 @@ try {
   const accuracy = await (await fetch(`${base}/api/bias-accuracy?horizonMinutes=60`)).json();
   check('bias-accuracy reports overall stats', accuracy?.overall && typeof accuracy.overall.resolved === 'number', `resolved=${accuracy?.overall?.resolved}`);
   check('bias-accuracy carries snapshots count', typeof accuracy?.snapshots === 'number' && accuracy.snapshots >= 0, `snapshots=${accuracy?.snapshots}`);
+
+  // Realtime-accuracy surface — structural invariants of the new modules.
+  const rp = await (await fetch(`${base}/api/realtime-pulse`)).json();
+  check('realtime-pulse responds', rp && typeof rp === 'object', `live=${rp?.live ?? 'false'} bars=${rp?.bars ?? 0}`);
+
+  const na = await (await fetch(`${base}/api/news-accuracy`)).json();
+  check('news-accuracy responds', na && Array.isArray(na?.sources), `sources=${na?.sources?.length ?? 0}`);
+
+  const sla = await (await fetch(`${base}/api/feed-sla`)).json();
+  check('feed-sla responds', sla && typeof sla === 'object', `breaches=${sla?.breaches?.length ?? 0} tickDeltaMs=${sla?.tickDeltaMs ?? '?'}`);
+
+  const sirens = await (await fetch(`${base}/api/sirens`)).json();
+  check('sirens endpoint responds', sirens && Array.isArray(sirens?.history), `history=${sirens?.history?.length ?? 0} active=${Object.keys(sirens?.active || {}).length}`);
 } catch (err) {
   console.log(`FAIL  ${err.message}`);
   failures++;

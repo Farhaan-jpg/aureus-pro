@@ -1,4 +1,4 @@
-import { getMarketData, onMarketTick } from './marketData.js';
+import { getMarketData, getCachedMarketData, onMarketTick } from './marketData.js';
 import { aggregateAllNews, getCachedNews } from './rssNews.js';
 import { classifyAllNews } from './sentimentEngine.js';
 import { getRetailSentiment } from './retailSentiment.js';
@@ -26,6 +26,11 @@ import { recordBiasSnapshot, getBiasAccuracy, getCalibratedWeights } from './bia
 import { refreshCentralBankWatch } from './centralBank.js';
 import { sendPush } from './webPush.js';
 import { buildSessionRecap } from './sessionRecap.js';
+import { bumpSeries, snapshot as pulseSnapshot, consumeDivergenceChange, getSeriesBars } from './seriesEngine.js';
+import { recordHeadline, resolveDueHeadlines, getNewsCredibility, getNewsAccuracy } from './newsFeedback.js';
+import { evaluateReleasedEvent } from './eventOutcomes.js';
+import { getFeedSla, noteTickBroadcast } from './feedSla.js';
+import * as sirens from './confluenceSirens.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -33,7 +38,9 @@ let pendingBroadcastTimer = null;
 let lastSentBiasLabel = null;
 let lastRetailTrapAlertTime = 0;
 const alertedEventIds = new Set();
+const releasedEventIds = new Set();
 const pushedNewsTitles = new Set();
+const handledSweepHandles = new Set();
 
 // Feed-health transition detection: only alert when a source DEGRADES (once per
 // transition), so repeated fallback pings never spam the channel.
@@ -44,13 +51,16 @@ let broadcastInFlight = false;
 
 function currentBias(marketData, classifiedNews, retail) {
   const centralBank = refreshCentralBankWatch(classifiedNews);
+  const pulse = pulseSnapshot();
   return calculateCompositeBias(marketData, classifiedNews, retail, {
     cot: getCotData(),
     etf: getGoldEtfFlows(),
     geo: getGeoRisk(),
     timeframes: getTimeframeMatrix(),
     centralBank,
-    calibratedWeights: getCalibratedWeights(marketData.session)
+    calibratedWeights: getCalibratedWeights(marketData.session),
+    realtimePulse: pulse,
+    newsCredibility: getNewsCredibility()
   });
 }
 
@@ -67,8 +77,10 @@ async function broadcastTick() {
       marketData,
       bias,
       retail,
-      timeframes: getTimeframeMatrix()
+      timeframes: getTimeframeMatrix(),
+      realtimePulse: pulseSnapshot()
     });
+    noteTickBroadcast();
   } catch (err) {
     recordError('tickBroadcast', err?.message);
   } finally {
@@ -100,8 +112,9 @@ export function startBackgroundWorker() {
 
   refreshAndBroadcast();
 
-  onMarketTick((key) => {
+  onMarketTick((key, quote) => {
     if (key === 'GOLD' || key === 'DXY' || key === 'SILVER') {
+      bumpSeries(key, quote?.price);
       scheduleTickBroadcast();
     }
   });
@@ -147,6 +160,8 @@ export function startBackgroundWorker() {
       const classifiedNews = classifyAllNews(rawNews);
       const geo = await refreshGeoRisk();
       broadcastToAll('NEWS_UPDATE', { news: classifiedNews, geo });
+      const tape = getCachedMarketData?.() ?? null;
+      const tapePrice = tape?.goldSpot?.price ?? null;
 
       // Push high-impact new headlines (mirrors the client voice threshold).
       const latest = classifiedNews[0];
@@ -155,6 +170,7 @@ export function startBackgroundWorker() {
         if (pushedNewsTitles.size > 300) {
           pushedNewsTitles.delete(pushedNewsTitles.values().next().value);
         }
+        if (tapePrice != null) recordHeadline(latest, tapePrice);
         sendPush({
           title: 'Breaking Gold News',
           body: latest.title.slice(0, 140),
@@ -162,11 +178,43 @@ export function startBackgroundWorker() {
           url: '/'
         }, { ttl: 900 });
       }
+      for (const item of classifiedNews.slice(0, 12)) {
+        if (tapePrice != null) recordHeadline(item, tapePrice);
+      }
     } catch (err) {
       console.error('[Worker News Loop Error]:', err.message);
       recordError('newsLoop', err.message);
     }
   }, config.newsRefreshMs);
+
+  // Realtime-pulse SSE: divergence, correlation break, volatility state.
+  setInterval(() => {
+    try {
+      const pulse = pulseSnapshot();
+      const change = consumeDivergenceChange();
+      broadcastToAll('REALTIME_PULSE', { pulse, divergenceChange: change });
+      if (change && change.type !== 'NONE') {
+        sirens.note('divergence', change.type, getCachedMarketData?.()?.goldSpot?.price ?? null);
+        const goldPrice = getCachedMarketData?.()?.goldSpot?.price;
+        if (goldPrice != null) {
+          sendPush({
+            title: `${change.type} divergence on the 5m tape`,
+            body: `Momentum is not confirming the move near $${Number(goldPrice).toFixed(2)}.`,
+            tag: `divergence-${change.type}-${Math.floor(Date.now() / 600000)}`,
+            url: '/'
+          }, { ttl: 300, urgency: 'high' });
+        }
+      }
+      if (pulse.live) {
+        if (pulse.corr?.broken) sirens.note('corrBreak', 'BREAK', getCachedMarketData?.()?.goldSpot?.price ?? null);
+        else sirens.clear('corrBreak');
+        if (pulse.volState === 'EXPANSION') sirens.note('volExpansion', pulse.corr?.brokenNote ? 'blow-off' : 'expansion', getCachedMarketData?.()?.goldSpot?.price ?? null);
+        else sirens.clear('volExpansion');
+      }
+    } catch (err) {
+      recordError('pulseLoop', err?.message);
+    }
+  }, 60000);
 
   setInterval(async () => {
     try {
@@ -198,6 +246,7 @@ export function startBackgroundWorker() {
       const retail = getRetailSentiment(marketData.goldSpot.price);
       const bias = currentBias(marketData, classifiedNews, retail);
       await checkTelegramTriggers(marketData, bias, retail);
+      await runRealtimeCycle(marketData, bias, retail);
     } catch (e) {
       recordError('telegramTriggers', e?.message);
     }
@@ -312,6 +361,82 @@ async function checkTelegramTriggers(marketData, bias, retail) {
   }
 }
 
+// Realtime cycle (every 30s alongside TG triggers): settle headline feedback,
+// catch released-event actuals (surprise re-pricer), detect handle sweeps on
+// the 5m tape, maintain the confluence-siren factor set, and surface SLA.
+async function runRealtimeCycle(marketData, bias, retail) {
+  try {
+    const goldPrice = marketData?.goldSpot?.price;
+    resolveDueHeadlines(goldPrice);
+
+    const calendar = await getEconomicCalendar();
+    if (calendar?.events && goldPrice != null) {
+      const now = Date.now();
+      for (const ev of calendar.events) {
+        if (releasedEventIds.has(ev.id)) continue;
+        const outcome = evaluateReleasedEvent(ev, now);
+        if (!outcome) continue;
+        releasedEventIds.add(ev.id);
+        if (releasedEventIds.size > 300) releasedEventIds.clear();
+        broadcastToAll('EVENT_ACTUAL', { outcome, goldPrice });
+        const s = outcome.surprise;
+        sendPush({
+          title: `${outcome.event.title} — ${s.magnitude} ${s.direction}`,
+          body: `Gold direction: ${s.direction} (actual ${s.actual} vs forecast ${s.forecast}, ${s.mismatch > 0 ? '+' : ''}${s.mismatch}).`,
+          tag: `actual-${outcome.event.id}`,
+          url: '/'
+        }, { ttl: 600, urgency: 'high' });
+      }
+    }
+
+    for (const sw of detectHandleSweeps(goldPrice)) {
+      const key = `h${sw.handle}`;
+      if (!handledSweepHandles.has(key)) {
+        handledSweepHandles.add(key);
+        if (handledSweepHandles.size > 50) handledSweepHandles.clear();
+        sirens.note('sweep', sw.direction, goldPrice);
+      }
+    }
+
+    if (retail?.live && (retail.longPercentage >= 80 || retail.shortPercentage >= 80)) {
+      sirens.note('retailExtreme', retail.longPercentage >= 80 ? 'LONG-heavy' : 'SHORT-heavy', goldPrice);
+    } else {
+      sirens.clear('retailExtreme');
+    }
+
+    const siren = sirens.evaluate(goldPrice);
+    if (siren) {
+      broadcastToAll('SIREN', siren);
+      sendPush({
+        title: `HIGH-CONVICTION${siren.direction !== 'UNKNOWN' ? ` — ${siren.direction}` : ''}`,
+        body: `${siren.factorCount} aligned factors near $${Number(goldPrice || 0).toFixed(2)}: ${siren.factors.map((f) => f.factor).join(', ')}.`,
+        tag: siren.id,
+        url: '/'
+      }, { ttl: 300, urgency: 'high' });
+    }
+
+    broadcastToAll('FEED_SLA', getFeedSla());
+  } catch (err) {
+    recordError('realtimeCycle', err?.message);
+  }
+}
+
+// Round-handle liquidity sweep detector on the last ~30 minutes of 5m tape:
+// a bar whose extreme pokes through the handle but whose close reclaimed it.
+function detectHandleSweeps(goldPrice) {
+  if (goldPrice == null) return [];
+  const bars = getSeriesBars('GOLD');
+  const recent = bars.slice(-6);
+  if (recent.length < 2) return [];
+  const handle = Math.round(goldPrice / 10) * 10;
+  const found = [];
+  for (const bar of recent) {
+    if (bar.close >= handle && bar.low < handle) found.push({ handle, direction: 'BULLISH' });
+    if (bar.close <= handle && bar.high > handle) found.push({ handle, direction: 'BEARISH' });
+  }
+  return found;
+}
+
 // Detect fresh degradations only; clear flags when a feed recovers so a
 // subsequent outage can alert again.
 async function checkFeedHealth(marketData) {
@@ -342,6 +467,12 @@ async function checkFeedHealth(marketData) {
     }
     if (freshIssues.length) {
       await sendFeedHealthTelegramAlert(freshIssues);
+      sendPush({
+        title: 'Feed SLA breach',
+        body: freshIssues.map((c) => `${c.label}: ${c.detail}`).join(' · ').slice(0, 240),
+        tag: `sla-${freshIssues.map((c) => c.key).sort().join('-')}`,
+        url: '/'
+      }, { ttl: 600, urgency: 'high' });
     }
   } catch (err) {
     recordError('feedHealthInternal', err?.message);

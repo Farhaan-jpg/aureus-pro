@@ -90,6 +90,7 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
   // so an all-fresh feed scores exactly like the pre-decay behavior.
   const nowMs = Date.now();
   let newsTotal = 0;
+  const newsCredibility = extras.newsCredibility || null;
   const newsWindow = (newsItems?.length ? newsItems.slice(0, 15) : []);
   if (newsWindow.length) {
     for (const item of newsWindow) {
@@ -99,9 +100,12 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
         const ageHours = Math.max(0, (nowMs - new Date(item.pubDate).getTime()) / 3600000);
         decay = Math.exp(-ageHours / 8);
       }
+      // Per-source credibility from the news→price feedback loop: proven
+      // sources amplify, unproven ones sit at 1, chronically wrong sources dampen.
+      const cred = (newsCredibility && item.source && newsCredibility[item.source]) || 1;
       let scoreVal = 0;
-      if (item.sentiment === 'BULLISH') scoreVal = 18 * impactMultiplier;
-      else if (item.sentiment === 'BEARISH') scoreVal = -18 * impactMultiplier;
+      if (item.sentiment === 'BULLISH') scoreVal = 18 * impactMultiplier * cred;
+      else if (item.sentiment === 'BEARISH') scoreVal = -18 * impactMultiplier * cred;
       newsTotal += scoreVal * decay;
     }
   }
@@ -171,7 +175,20 @@ export function calculateCompositeBias(marketData, newsItems, retailPositioning,
     if (longCorr.goldDxy != null && longCorr.goldDxy > 0.35) corrFactor -= 8; // dollar rising WITH gold = move cracks
     if (longCorr.goldUs10y != null && longCorr.goldUs10y < -0.45 && corrFactor === 0) corrFactor += 4; // deep inverse with yields = real bid
   }
-  structureSubScore += volRegimeFactor + corrFactor;
+
+  // ── Realtime intraday pulse (5m series: RSI divergence, corr break, vol) ─
+  const realtimePulse = extras.realtimePulse || null;
+  let pulseFactor = 0;
+  if (realtimePulse?.live) {
+    if (realtimePulse.divergence?.type === 'BEARISH') pulseFactor -= 6;   // HH rejected by momentum
+    else if (realtimePulse.divergence?.type === 'BULLISH') pulseFactor += 6;
+    if (realtimePulse.corr?.broken && Math.abs(gold.changePercent || 0) > 0.15) {
+      pulseFactor += (gold.changePercent > 0 ? -5 : 5); // extended move without the driver = failure lean
+    }
+    if (realtimePulse.volState === 'SQUEEZE') pulseFactor += 4;           // anticipating expansion
+    else if (realtimePulse.volState === 'EXPANSION' && realtimePulse.atr14Percentile >= 90) pulseFactor -= 4; // blow-off caution
+  }
+  structureSubScore += volRegimeFactor + corrFactor + pulseFactor;
   structureSubScore = clamp(structureSubScore);
 
   // ── Multi-timeframe trend alignment (EMA9/21 on 5M..1D) ──────────────

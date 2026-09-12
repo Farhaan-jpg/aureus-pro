@@ -10,3 +10,4 @@ server/data/cot_cache.json
 server/data/bias_history.json
 server/data/webpush_vapid.json
 server/data/push_subscriptions.json
+server/data/news_feedback.json
