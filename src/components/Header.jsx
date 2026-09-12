@@ -5,6 +5,8 @@ export default function Header({
   marketData,
   bias,
   isLive,
+  health,
+  reconnecting,
   isRefreshing,
   onRefresh,
   voiceEnabled,
@@ -60,6 +62,15 @@ export default function Header({
     : isLive && tapeFresh ? 'bg-emerald-400 animate-pulse'
     : isLive ? 'bg-amber-400 animate-pulse'
     : 'bg-rose-500';
+
+  // /api/health snapshot: surfacing silent feed degradation as a first-class pill.
+  const degraded = health?.status === 'DEGRADED';
+  const healthTooltip = health?.feeds
+    ? Object.entries(health.feeds).filter(([, v]) => v === false || v === 'offline' || v === 'unavailable').map(([k]) => k).join(', ') || 'all feeds nominal'
+    : 'health snapshot unavailable';
+  const degradedFeeds = health?.feeds
+    ? Object.entries(health.feeds).filter(([, v]) => v === false || v === 'offline' || v === 'unavailable').map(([k]) => k).join(', ')
+    : '';
 
   return (
     <header className="border-b border-white/10 bg-[#0a0c12]/90 backdrop-blur-md sticky top-0 z-50">
@@ -166,6 +177,18 @@ export default function Header({
               {streamLabel}
             </span>
           </div>
+
+          {/* Feed Degradation Pill (from /api/health) */}
+          {health && (
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900/80 border text-[11px] font-mono ${
+              degraded ? 'border-amber-700/60 text-amber-300' : 'border-white/5 text-emerald-500/80'
+            }`} title={degraded ? `Degraded feeds: ${degradedFeeds || 'see health'}` : healthTooltip}>
+              {degraded ? <ShieldAlert className="w-3 h-3" /> : <Radio className="w-3 h-3" />}
+              <span className={degraded ? 'font-bold animate-pulse' : ''}>
+                {degraded ? 'HEALTH DEGRADED' : 'HEALTHY'}
+              </span>
+            </div>
+          )}
 
           {/* Manual Refresh */}
           <button

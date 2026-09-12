@@ -42,6 +42,10 @@ export default function App() {
 
   const [isLive, setIsLive] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Operator health snapshot: polled from /api/health so the terminal wears
+  // its own failures (DEGRADED) instead of only reporting them to machines.
+  const [health, setHealth] = useState(null);
+  const [reconnecting, setReconnecting] = useState(false);
 
   // Settings & Voice Controls
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -59,6 +63,21 @@ export default function App() {
     const updated = saveVoiceSettings({ enabled: !voiceConfig.enabled });
     setVoiceConfig({ ...updated });
   }, [voiceConfig.enabled]);
+
+  // Active health poll so the HUD reflects feed degradation in real time
+  useEffect(() => {
+    let cancelled = false;
+    const pollHealth = async () => {
+      try {
+        const r = await fetch('/api/health');
+        const h = await r.json();
+        if (!cancelled && h?.status) setHealth(h);
+      } catch (err) {}
+    };
+    pollHealth();
+    const t = setInterval(pollHealth, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
 
   // Initial Fetch of all dashboard data — non-blocking: each feed paints the
   // moment it arrives instead of waiting for the slowest endpoint (GDELT/ETF).
@@ -107,11 +126,13 @@ export default function App() {
       eventSource.onopen = () => {
         liveRef.current = true;
         setIsLive(true);
+        setReconnecting(false);
       };
 
       eventSource.addEventListener('CONNECTED', (e) => {
         liveRef.current = true;
         setIsLive(true);
+        setReconnecting(false);
       });
 
       eventSource.addEventListener('TICK_UPDATE', (e) => {
@@ -185,6 +206,7 @@ export default function App() {
       eventSource.onerror = () => {
         liveRef.current = false;
         setIsLive(false);
+        setReconnecting(true);
         if (eventSource) {
           eventSource.close();
           eventSource = null;
@@ -312,6 +334,8 @@ export default function App() {
         marketData={marketData}
         bias={bias}
         isLive={isLive}
+        health={health}
+        reconnecting={reconnecting}
         isRefreshing={isRefreshing}
         onRefresh={handleManualRefresh}
         voiceEnabled={voiceConfig.enabled}
@@ -319,6 +343,13 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPriceAlerts={() => setIsPriceAlertsOpen(true)}
       />
+
+      {reconnecting && (
+        <div className="bg-amber-950/60 border-y border-amber-700/40 text-amber-300 text-[11px] font-mono px-4 py-1.5 flex items-center justify-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          RECONNECTING TO TERMINAL STREAM…
+        </div>
+      )}
 
       {/* Main Terminal Workspace */}
       <main className="flex-1 max-w-[1920px] w-full mx-auto p-3 sm:p-4 space-y-4">
