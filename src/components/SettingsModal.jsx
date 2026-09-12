@@ -53,9 +53,12 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
     if (!isOpen) return;
 
     setVoiceConfig(getVoiceSettings());
-    const voices = getAvailableVoices();
-    setAvailableVoices(voices);
+    setAvailableVoices(getAvailableVoices());
     setBuddyConfig(getBuddySettings());
+
+    // Keep the buddy voice list warm as Chrome loads voices asynchronously
+    const onVoices = () => setAvailableVoices(getAvailableVoices());
+    window.speechSynthesis?.addEventListener?.('voiceschanged', onVoices);
 
     // Fetch server settings
     fetch('/api/settings')
@@ -73,6 +76,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
         }
       })
       .catch(err => console.error('Failed to load server settings:', err));
+
+    return () => window.speechSynthesis?.removeEventListener?.('voiceschanged', onVoices);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -642,6 +647,29 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
                   HEAR {currentChar?.name?.toUpperCase() || 'BUDDY'}
                 </button>
                 <p className="mt-2 text-[10px] text-slate-500">Tuning note: voices are inspired by personas (pitch/rate). Exact actor voices can't be used — platform policy blocks cloned voices, even for personal use.</p>
+
+                <div className="mt-4 pt-3 border-t border-white/10">
+                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">Voice Override</div>
+                  <div className="text-[10px] text-slate-500 mb-2">
+                    Currently using: <span className="text-purple-300">{resolveVoiceFor(currentChar)?.name || 'system default'}</span>
+                  </div>
+                  <select
+                    value={buddyConfig.voiceOverride || ''}
+                    onChange={(e) => {
+                      const next = { ...buddyConfig, voiceOverride: e.target.value ? e.target.value : null };
+                      setBuddyConfig(next);
+                      saveBuddySettings(next);
+                      speakGreeting(true);
+                    }}
+                    className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="">Auto — best male voice quality first (natural over robotic)</option>
+                    {availableVoices.map((v) => (
+                      <option key={`${v.name}_${v.lang}`} value={v.name}>{v.name} ({v.lang})</option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 text-[10px] text-slate-500">Tip: on Windows Chrome, "Google" voices (downloaded) sound far more human than "Microsoft ... Desktop" voices. Pick one named Google or Natural if you see it.</p>
+                </div>
               </div>
             </div>
           )}

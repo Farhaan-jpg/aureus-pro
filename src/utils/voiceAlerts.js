@@ -58,41 +58,106 @@ export function getAvailableVoices() {
   return window.speechSynthesis.getVoices() || [];
 }
 
-// Find best matching Indian English male voice
-export function getIndianEnglishVoice() {
+// ── Voice quality pipeline ─────────────────────────────────────────────────
+// Windows Chrome exposes mostly SAPI voices (David/Zira/Aria) that sound
+// robotic, plus downloaded Google network voices which are far more natural.
+// We always prefer natural/neural male voices, explicitly avoid female voices,
+// and only fall back to "any English" as a last resort.
+
+// Lowercased substrings that mark a voice as male.
+const MALE_TOKENS = [
+  'male', 'ravi', 'david', 'guy', 'mark', 'george', 'daniel', 'oliver',
+  'james', 'jacob', 'william', 'ryan', 'anthony', 'brian', 'christopher',
+  'matthew', 'thomas', 'richard', 'michael', 'alex', 'eric', 'steve', 'tom',
+  'paul', 'neil', 'fred', 'check', 'narrator', 'google us english',
+  'google british english', 'mohan', 'prabhat'
+];
+
+// Lowercased substrings that mark a voice as female (never pick these for male personas).
+const FEMALE_TOKENS = [
+  'female', 'zira', 'aria', 'jenny', 'emma', 'heera', 'kalpana', 'priya',
+  'ananya', 'neerja', 'samantha', 'victoria', 'tessa', 'fiona', 'karen',
+  'moira', 'allison', 'ava', 'susan', 'hazel', 'kate', 'michelle', 'nancy',
+  'trinity', 'soyoung', 'zuzana', 'ana', 'woman', 'girl network'
+];
+
+// "Natural" voices (neural Google/network or explicitly named Natural) sound
+// human; SAPI desktop voices are last-resort only.
+function isVoiceFemale(v) {
+  const n = (v.name || '').toLowerCase();
+  return FEMALE_TOKENS.some((t) => n.includes(t));
+}
+function isVoiceMale(v) {
+  const n = (v.name || '').toLowerCase();
+  return MALE_TOKENS.some((t) => n.includes(t)) && !isVoiceFemale(v);
+}
+function isNaturalVoice(v) {
+  const n = (v.name || '').toLowerCase();
+  return n.includes('natural') || n.includes('google') || n.includes('online');
+}
+
+// Best-quality male voice for the given language + optional explicit name hint.
+// Tiers: (1) explicit hint match, (2) natural male, (3) natural ungendered,
+// (4) any male-token voice, (5) any non-female English voice, (6) any voice.
+export function resolveBestVoice(langHint = 'en-IN', nameHint = '') {
   if (typeof window === 'undefined' || !window.speechSynthesis) return null;
   const voices = window.speechSynthesis.getVoices();
-  if (!voices || voices.length === 0) return null;
+  if (!voices.length) return null;
 
-  // 1. Explicit Indian English Male (e.g. Microsoft Ravi, Google en-IN Male, Mohan, Prabhat)
-  const inMale = voices.find(v => {
-    const lang = (v.lang || '').toLowerCase();
-    const name = (v.name || '').toLowerCase();
-    const isIndian = lang.includes('en-in') || lang.includes('en_in') || name.includes('india');
-    const isMale = name.includes('male') || name.includes('ravi') || name.includes('prabhat') || name.includes('mohan') || name.includes('neerja') === false;
-    return isIndian && isMale && !name.includes('heera') && !name.includes('kalpana') && !name.includes('priya') && !name.includes('ananya');
+  const norm = (lang) => (lang || '').toLowerCase().replace('_', '-');
+  const pool = langHint
+    ? voices.filter((v) => norm(v.lang).startsWith(norm(langHint)))
+    : voices;
+  const usable = pool.length ? pool : voices;
+
+  const pick = (test, list = usable) => list.find(test);
+  const scoreOrdinal = (v) => (isNaturalVoice(v) ? 0 : 1);
+
+  if (nameHint) {
+    const h = nameHint.toLowerCase();
+    const hintMatch = pick((v) => (v.name || '').toLowerCase().includes(h) && !isVoiceFemale(v));
+    if (hintMatch) return hintMatch;
+  }
+
+  // Sort candidates male-first, natural-first for a stable deterministic pick.
+  const candidates = [...usable].sort((a, b) => {
+    const maleA = isVoiceMale(a) ? 0 : 1;
+    const maleB = isVoiceMale(b) ? 0 : 1;
+    if (maleA !== maleB) return maleA - maleB;
+    return scoreOrdinal(a) - scoreOrdinal(b);
   });
-  if (inMale) return inMale;
 
-  // 2. Any Indian English voice (Ravi, Heera, Google en-IN, etc.)
-  const inAny = voices.find(v => {
-    const lang = (v.lang || '').toLowerCase();
-    const name = (v.name || '').toLowerCase();
-    return lang.includes('en-in') || lang.includes('en_in') || name.includes('india');
-  });
-  if (inAny) return inAny;
+  const naturalMale = candidates.find((v) => isVoiceMale(v) && isNaturalVoice(v));
+  if (naturalMale) return naturalMale;
 
-  // 3. Fallback to British / International English male
-  const enMale = voices.find(v => {
-    const lang = (v.lang || '').toLowerCase();
-    const name = (v.name || '').toLowerCase();
-    return lang.startsWith('en') && (name.includes('male') || name.includes('george') || name.includes('david') || name.includes('oliver') || name.includes('guy'));
-  });
-  if (enMale) return enMale;
+  const naturalAny = candidates.find((v) => isNaturalVoice(v) && !isVoiceFemale(v));
+  if (naturalAny) return naturalAny;
 
-  // 4. Default English voice
-  return voices.find(v => (v.lang || '').startsWith('en')) || voices[0] || null;
+  const maleToken = candidates.find((v) => isVoiceMale(v));
+  if (maleToken) return maleToken;
+
+  const anyEnglish = candidates.find((v) => norm(v.lang).startsWith('en') && !isVoiceFemale(v));
+  if (anyEnglish) return anyEnglish;
+
+  const anyVoice = pick(() => true);
+  if (anyVoice) return anyVoice;
+
+  return null;
 }
+
+// Backwards-compatible entry point: best Indian-English male voice.
+export function getIndianEnglishVoice() {
+  const voice = resolveBestVoice('en-IN');
+  return voice || resolveBestVoice('en');
+}
+
+// Warm the voice list — modern Chrome loads voices asynchronously.
+(function warmVoices() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.getVoices();
+  const onVoices = () => window.speechSynthesis.getVoices();
+  window.speechSynthesis.addEventListener?.('voiceschanged', onVoices);
+})();
 
 // Subtle acoustic alert chime before voice announcement (587Hz -> 880Hz)
 export function playAlertChime() {

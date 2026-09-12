@@ -3,7 +3,7 @@
 // events in character, and turns dry alerts into personality. Voices are
 // "inspired" (rate/pitch/voice tuning), not cloned recordings — platform
 // policy blocks recognizable celebrity clones, and Render can't host a cloner.
-import { speakAlert, getAvailableVoices, getIndianEnglishVoice } from './voiceAlerts.js';
+import { speakAlert, getAvailableVoices, resolveBestVoice } from './voiceAlerts.js';
 
 export const BUDDY_CHARACTERS = [
   {
@@ -68,8 +68,8 @@ export const BUDDY_CHARACTERS = [
     name: 'Heisenberg',
     emoji: '👨‍🔬',
     blurb: 'Slow, quiet menace. Precision.',
-    pitch: 0.62,
-    rate: 0.82,
+    pitch: 0.7,
+    rate: 0.86,
     lang: 'en-GB',
     lines: {
       greeting: [
@@ -182,8 +182,8 @@ export const BUDDY_CHARACTERS = [
     name: 'Jesse',
     emoji: '🎧',
     blurb: 'Excited, full of slang.',
-    pitch: 1.15,
-    rate: 1.18,
+    pitch: 1.08,
+    rate: 1.14,
     lang: 'en-US',
     lines: {
       greeting: [
@@ -239,7 +239,7 @@ export const BUDDY_CHARACTERS = [
     emoji: '⚖️',
     blurb: 'Fast-talking, never a dull pitch.',
     pitch: 0.9,
-    rate: 1.32,
+    rate: 1.26,
     lang: 'en-US',
     lines: {
       greeting: [
@@ -349,7 +349,7 @@ export const BUDDY_CHARACTERS = [
     name: 'Thor',
     emoji: '🔨',
     blurb: 'Booming Asgardian declarations.',
-    pitch: 0.68,
+    pitch: 0.72,
     rate: 0.95,
     lang: 'en-GB',
     lines: {
@@ -463,7 +463,8 @@ const DEFAULT_SETTINGS = {
   chatterEnabled: true,
   characterId: 'analyst',
   cadence: 'balanced', // 'chill' | 'balanced' | 'hyper'
-  quietHours: null
+  quietHours: null,
+  voiceOverride: null // named voice forced for the current character
 };
 
 const CADENCE_RANGE = {
@@ -524,21 +525,18 @@ export function getChatterRange() {
   return CADENCE_RANGE[getBuddySettings().cadence] || CADENCE_RANGE.balanced;
 }
 
-// Prefer a voice that roughly matches the character's persona (deep male,
-// fast, regional). Exposed for the settings "test" button too.
+// Prefer a voice that roughly matches the character's persona (male, calm).
+// Order: manual override (Settings → Buddy) → persona language/hint → the
+// quality-first resolver (natural male > male > non-female).
 export function resolveVoiceFor(char) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  const voices = getAvailableVoices();
-  if (!voices.length) return getIndianEnglishVoice();
-  const hint = char?.voiceHint ? (char.voiceHint || '').toLowerCase() : '';
-  const byHint = hint && voices.find(
-    (v) => (v.name || '').toLowerCase().includes(hint) && (v.lang || '').toLowerCase().startsWith('en')
-  );
-  if (byHint) return byHint;
-  const lang = (char?.lang || '').toLowerCase();
-  const byLang = lang && voices.find((v) => (v.lang || '').toLowerCase().startsWith(lang));
-  if (byLang) return byLang;
-  return getIndianEnglishVoice();
+  const settings = getBuddySettings();
+  if (settings.voiceOverride) {
+    const exact = getAvailableVoices().find(
+      (v) => (v.name || '') === settings.voiceOverride || (v.name || '') === settings.voiceOverride.trim()
+    );
+    if (exact) return exact;
+  }
+  return resolveBestVoice(char.lang || 'en', char.voiceHint || '');
 }
 
 function fill(tpl, vars) {
