@@ -4,6 +4,7 @@ import { getFredMacro, refreshFredMacro } from './fredMacro.js';
 import { getKeyLevels, refreshKeyLevels } from './keyLevels.js';
 import { getCorrelationMonitor, refreshCorrelationMonitor } from './correlationMonitor.js';
 import { getVolatilityRegime, refreshVolatilityRegime } from './volatilityRegime.js';
+import { getMarketState } from './marketState.js';
 
 const ASSETS = {
   GOLD: { symbol: 'OANDA:XAUUSD', name: 'Gold Spot', display: 'XAU/USD', category: 'metal', yahoo: 'GC=F', digits: 2 },
@@ -139,6 +140,31 @@ function applyQuote(key, partial, source) {
 let tvWebSocket = null;
 let isTvWsConnected = false;
 let tvReconnectTimer = null;
+let tvReconnectAttempt = 0;
+let tvLastActivityAt = Date.now();
+
+const TV_RECONNECT_BASE_MS = 2500;
+const TV_RECONNECT_MAX_MS = 30000;
+const TV_WATCHDOG_STALE_MS = 60000;
+
+function scheduleTvReconnect() {
+  const delay = Math.min(TV_RECONNECT_BASE_MS * 2 ** tvReconnectAttempt, TV_RECONNECT_MAX_MS);
+  tvReconnectAttempt++;
+  if (tvReconnectTimer) clearTimeout(tvReconnectTimer);
+  tvReconnectTimer = setTimeout(() => {
+    tvReconnectTimer = null;
+    initTradingViewStream();
+  }, delay);
+}
+
+setInterval(() => {
+  // Heartbeat watchdog: if the socket is "connected" but silent for too long,
+  // force a reconnect cycle so the LIVE tape stays honest.
+  if (isTvWsConnected && Date.now() - tvLastActivityAt > TV_WATCHDOG_STALE_MS) {
+    console.warn('[MarketData] TV websocket silent — forcing reconnect.');
+    try { tvWebSocket?.terminate(); } catch (e) {}
+  }
+}, 15000);
 
 function initTradingViewStream() {
   if (tvWebSocket) {
@@ -162,6 +188,8 @@ function initTradingViewStream() {
 
     ws.on('open', () => {
       isTvWsConnected = true;
+      tvReconnectAttempt = 0;
+      tvLastActivityAt = Date.now();
       console.log('[MarketData] TradingView websocket connected.');
       send('set_auth_token', ['unauthorized_user_token']);
       send('quote_create_session', [sessionId]);
@@ -170,6 +198,7 @@ function initTradingViewStream() {
     });
 
     ws.on('message', (buf) => {
+      tvLastActivityAt = Date.now();
       const raw = buf.toString();
       const parts = raw.split(/~m~\d+~m~/).filter(Boolean);
       for (const part of parts) {
@@ -217,14 +246,13 @@ function initTradingViewStream() {
     ws.on('close', () => {
       isTvWsConnected = false;
       if (tvReconnectTimer) clearTimeout(tvReconnectTimer);
-      tvReconnectTimer = setTimeout(initTradingViewStream, 2500);
+      scheduleTvReconnect();
     });
 
     tvWebSocket = ws;
   } catch (err) {
     console.warn('[MarketData] TV websocket failed:', err.message);
-    if (tvReconnectTimer) clearTimeout(tvReconnectTimer);
-    tvReconnectTimer = setTimeout(initTradingViewStream, 4000);
+    scheduleTvReconnect();
   }
 }
 
@@ -545,9 +573,12 @@ export async function getMarketData() {
     sources: priceSources
   };
 
+  const marketState = getMarketState();
+
   cachedMarketData = {
     timestamp: new Date().toISOString(),
-    session: sessionFromUtc(),
+    session: marketState.open ? sessionFromUtc() : 'CLOSED',
+    marketState,
     spread: results.GOLD.spread ?? null,
     goldSpot: results.GOLD,
     gsr,

@@ -244,6 +244,16 @@ export async function sendDailyBriefingTelegramAlert(snap) {
     ? upcoming.map((e) => `${e.date ? new Date(e.date).toISOString().slice(11, 16) : ''}Z ${e.impact || ''} ${e.currency || ''} ${e.title || ''}${e.isEstimated ? ' (est)' : ''}`).join('\n')
     : 'No scheduled high-importance releases in window.';
 
+  const dh = snap.marketData?.dataHealth || {};
+  const ms = snap.marketData?.marketState || {};
+  const ageSec = dh.goldAgeMs != null ? Math.round(dh.goldAgeMs / 1000) : null;
+  const cross = dh.priceCheck || {};
+  const feedLine = [
+    `${ms.open === false ? '⛔ <b>MARKET CLOSED</b> · ' : ''}${ms.label || 'OPEN'}`,
+    `Gold ${dh.goldSource || '—'}${ageSec != null ? ` (${ageSec}s)` : ''}`,
+    `TV-WS ${dh.tvWs ? '✅' : '⚠'} · spread $${cross.spread ?? '—'}${cross.discrepancy ? ' ⚠' : ''} acr ${cross.sources ?? 0} src`
+  ].join('\n');
+
   const message = `
 🌅 ☕ <b>AUREUS PRO DAILY BRIEFING</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -261,6 +271,9 @@ P <b>$${fmt(piv.p, 0)}</b> | R1 <b>$${fmt(piv.r1, 0)}</b> | S1 <b>$${fmt(piv.s1,
 <b>🎯 Corr (60d):</b> Gold vs DXY <b>${corr.goldDxy == null ? '—' : corr.goldDxy.toFixed(2)}</b> · vs US10Y <b>${corr.goldUs10y == null ? '—' : corr.goldUs10y.toFixed(2)}</b>
 <b>👥 Retail:</b> ${snap.retail?.live ? `${snap.retail.longPercentage?.toFixed(1) ?? '—'}% L / ${snap.retail.shortPercentage?.toFixed(1) ?? '—'}% S` : 'data pending'}
 <b>🌍 Geo risk:</b> ${snap.geo?.live ? `${snap.geo.score ?? 0}/100 (${(snap.geo.level || 'LOW')})` : 'data pending'}
+
+<b>🩺 Feed Health:</b>
+${feedLine}
 
 <b>📅 Next Releases:</b>
 ${catLines}

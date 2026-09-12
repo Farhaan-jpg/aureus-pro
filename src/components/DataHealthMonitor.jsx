@@ -27,6 +27,7 @@ function ageLabel(iso) {
 export default function DataHealthMonitor({ marketData, geo, etf, timeframes, calendar, news }) {
   const dh = marketData?.dataHealth || {};
   const goldAge = dh.goldAgeMs;
+  const marketOpen = marketData?.marketState?.open !== false;
   const newsFresh = news?.length && news[0]?.pubDate ? ageLabel(news[0].pubDate) : '';
   const calCount = calendar?.events?.length ?? 0;
 
@@ -74,10 +75,15 @@ export default function DataHealthMonitor({ marketData, geo, etf, timeframes, ca
         </div>
         <div className={`${rowCls} sm:col-span-1 col-span-2`}>
           <span className={labelCls}>Price cross-check</span>
-          <span className={`${valCls} flex items-center gap-1 ${dh.priceCheck?.sources >= 2 ? (dh.priceCheck?.discrepancy ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-500'}`}>
+          <span className={`${valCls} flex items-center gap-1 ${
+            marketOpen
+              ? (dh.priceCheck?.sources >= 2 ? (dh.priceCheck?.discrepancy ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-500')
+              : 'text-slate-500'
+          }`}>
             <Shuffle className="w-3 h-3" />
             {dh.priceCheck?.sources ?? 0} src · spread {dh.priceCheck?.spread == null ? '?' : `$${dh.priceCheck.spread.toFixed(2)}`}
-            {dh.priceCheck?.discrepancy ? ' ⚠' : ''}
+            {marketOpen && dh.priceCheck?.discrepancy ? ' ⚠' : ''}
+            {!marketOpen ? ' · CLOSED' : ''}
           </span>
         </div>
       </div>

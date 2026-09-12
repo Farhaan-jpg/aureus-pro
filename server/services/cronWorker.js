@@ -14,13 +14,13 @@ import { refreshFredMacro } from './fredMacro.js';
 import { refreshKeyLevels } from './keyLevels.js';
 import { refreshVolatilityRegime } from './volatilityRegime.js';
 import { refreshCorrelationMonitor } from './correlationMonitor.js';
-import {
-  sendRedFolderTelegramAlert,
+import { sendRedFolderTelegramAlert,
   sendRetailTrapTelegramAlert,
   sendBiasFlipTelegramAlert,
   sendFeedHealthTelegramAlert,
   sendDailyBriefingTelegramAlert
 } from './telegramBot.js';
+import { getMarketState } from './marketState.js';
 
 let isRunning = false;
 let lastTickBroadcast = 0;
@@ -141,7 +141,9 @@ export function startBackgroundWorker() {
     try {
       const now = new Date();
       const todayKey = now.toISOString().slice(0, 10);
+      const marketState = getMarketState(now);
       if (
+        marketState.open &&
         now.getUTCHours() === config.dailyBriefUtcHour &&
         now.getUTCMinutes() === config.dailyBriefUtcMinute &&
         now.getUTCSeconds() < 30 &&
@@ -184,15 +186,18 @@ async function checkTelegramTriggers(marketData, bias, retail) {
     }
 
     const now = Date.now();
-    if (retail.live && (retail.longPercentage >= 80 || retail.shortPercentage >= 80) && (now - lastRetailTrapAlertTime > 30 * 60 * 1000)) {
-      lastRetailTrapAlertTime = now;
-      await sendRetailTrapTelegramAlert(retail, goldPrice);
-    }
+    const marketState = getMarketState();
+    if (marketState.open) {
+      if (retail.live && (retail.longPercentage >= 80 || retail.shortPercentage >= 80) && (now - lastRetailTrapAlertTime > 30 * 60 * 1000)) {
+        lastRetailTrapAlertTime = now;
+        await sendRetailTrapTelegramAlert(retail, goldPrice);
+      }
 
-    if (lastSentBiasLabel && lastSentBiasLabel !== bias.label) {
-      await sendBiasFlipTelegramAlert(bias.label, bias.score, goldPrice);
+      if (lastSentBiasLabel && lastSentBiasLabel !== bias.label) {
+        await sendBiasFlipTelegramAlert(bias.label, bias.score, goldPrice);
+      }
+      lastSentBiasLabel = bias.label;
     }
-    lastSentBiasLabel = bias.label;
 
     await checkFeedHealth(marketData);
   } catch (err) {}
@@ -205,12 +210,17 @@ async function checkFeedHealth(marketData) {
     const dh = marketData?.dataHealth || {};
     const geo = getGeoRisk();
     const calendar = getEconomicCalendar();
+    const marketOpen = getMarketState().open;
     const checks = [];
 
-    if (!dh.tvWs) checks.push({ key: 'tvWs', label: 'TradingView websocket', detail: 'disconnected — streaming to hot Yahoo/GoldPrice fallbacks' });
-    if (dh.stale) checks.push({ key: 'goldStale', label: 'Gold tape', detail: `last print >30s stale (age ${Math.round((dh.goldAgeMs || 0) / 1000)}s)` });
-    if (dh.goldSource === 'unavailable') checks.push({ key: 'goldUnavailable', label: 'Gold source', detail: 'no active quote source' });
-    if (dh.priceCheck?.discrepancy) checks.push({ key: 'goldSpread', label: 'Gold price spread', detail: `cross-source spread $${dh.priceCheck.spread?.toFixed(2)} across ${dh.priceCheck.sources} sources` });
+    // Tape-level checks are only meaningful while the market is open — a quiet
+    // weekend would otherwise spam "feed degraded" for normal closure.
+    if (marketOpen) {
+      if (!dh.tvWs) checks.push({ key: 'tvWs', label: 'TradingView websocket', detail: 'disconnected — streaming to hot Yahoo/GoldPrice fallbacks' });
+      if (dh.stale) checks.push({ key: 'goldStale', label: 'Gold tape', detail: `last print >30s stale (age ${Math.round((dh.goldAgeMs || 0) / 1000)}s)` });
+      if (dh.goldSource === 'unavailable') checks.push({ key: 'goldUnavailable', label: 'Gold source', detail: 'no active quote source' });
+      if (dh.priceCheck?.discrepancy) checks.push({ key: 'goldSpread', label: 'Gold price spread', detail: `cross-source spread $${dh.priceCheck.spread?.toFixed(2)} across ${dh.priceCheck.sources} sources` });
+    }
     if (geo?.source === 'rss-fallback') checks.push({ key: 'geoFallback', label: 'Geopolitics', detail: 'GDELT unreachable — using BBC/Al Jazeera RSS' });
     if (calendar?.feedSource === 'benchmark') checks.push({ key: 'calFallback', label: 'Economic calendar', detail: 'ForexFactory unreachable — showing estimated schedule' });
     if (!getGoldEtfFlows()?.live) checks.push({ key: 'etfStale', label: 'Gold ETF flows', detail: 'GLD/IAU/GLDM/SGOL feed not live' });

@@ -35,7 +35,8 @@ export default function Header({
     LONDON_OPEN: { label: 'London Open (Judas Swing Zone)', color: 'text-amber-400 bg-amber-950/40 border-amber-800/50' },
     NY_OVERLAP: { label: 'London / NY Overlap (Peak Volatility)', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/50' },
     NY_AFTERNOON: { label: 'NY Afternoon (Late Settlement)', color: 'text-purple-400 bg-purple-950/40 border-purple-800/50' },
-    ASIAN_PACIFIC: { label: 'Asian Range (Pacific/Sydney)', color: 'text-cyan-400 bg-cyan-950/40 border-cyan-800/50' }
+    ASIAN_PACIFIC: { label: 'Asian Range (Pacific/Sydney)', color: 'text-cyan-400 bg-cyan-950/40 border-cyan-800/50' },
+    CLOSED: { label: 'Market Closed (Weekend)', color: 'text-rose-400 bg-rose-950/40 border-rose-800/50' }
   };
 
   const sessionInfo = sessionDisplayMap[session] || sessionDisplayMap.ASIAN;
